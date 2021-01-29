@@ -11,7 +11,7 @@ do
   end
 end
 ```
-Also note that if the mod registers any events with filters, the filters will be ignored.
+Also note that if the mod registers any events with filters, the filters will be ignored when loaded by `modloader`.
 
 Create a scenario with the following in `control.lua`:
 
