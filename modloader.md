@@ -1,14 +1,5 @@
 `modloader` is a wrapper to allow running a mostly-unmodified `control.lua` from a mod as an `event_handler` library inside `level`. Examples taken from [Nixie Tubes](https://mods.factorio.com/mod/nixie-tubes).
 
-
-Create a scenario with the following in `control.lua`:
-
-```lua
-local handler = require("event_handler")
-local modloader = require("__simhelper__/modloader.lua")
-handler.add_lib(modloader.load("nixie-tubes"))
-```
-
 Add the following to the top of the mod's main `control.lua` to prevent double-loading the mod while building saves for simulations:
 
 ```lua
@@ -19,6 +10,15 @@ do
     return
   end
 end
+```
+Also note that if the mod registers any events with filters, the filters will be ignored.
+
+Create a scenario with the following in `control.lua`:
+
+```lua
+local handler = require("event_handler")
+local modloader = require("__simhelper__/modloader.lua")
+handler.add_lib(modloader.load("nixie-tubes"))
 ```
 
 Create a world from this scenario, open `/editor` (to remove your character), and save it. Optionally delete all entities and fill with lab tiles. Copy this save into your mod for use in simulations. You can also manually build demo setups if desired.
