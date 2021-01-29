@@ -1,13 +1,21 @@
 -- mod must either not use event filters, or be prepared to receive unfiltered events
--- mod should use all `__modname__` qualified requires to ensure correct resolution
 -- mod must handle having an empty `global` in on_load or have it transplanted to `level.__modloader[modname]`
 
-
+-- you can't *call* remote at file load time, but you can check if an interface exists
+-- but there's not really anything useful to call for later either
+local loaded = function()
+  return true
+end
 local modloader = {
-  env = { _ENV=_ENV }
+  env = { _ENV=_ENV },
+  remote = {},
 }
+remote.add_interface("modloader",modloader.remote)
 
 function modloader.load(modname)
+  if modname == "level" then
+    error("Cannot wrap `level`")
+  end
   local modevents = {
     events = {},
     on_nth_tick = {},
@@ -137,6 +145,7 @@ function modloader.load(modname)
     end
   end,"c")
   require("__"..modname.."__/control.lua")
+  modloader.remote[modname] = loaded
   return modevents
 end
 
