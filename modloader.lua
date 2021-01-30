@@ -21,6 +21,66 @@ function modloader.load(modname)
     on_nth_tick = {},
   }
   local env = _ENV
+  local package = env.package
+
+  local modpackages = {}
+  local sandbox
+  local function sandbox_require(require_name,withpackage)
+  
+    -- just skip all the hooking and return cached results directly:
+    do
+      local cached = modpackages[require_name]
+      if cached then
+        return cached
+      end
+    end
+
+    -- check for an existing hook:
+    local oldhook,oldmask,oldcount = debug.gethook()
+    -- this hook is only a call hook, which means losing a few line events,
+    -- but only between here and the start of the main chunk of the required file
+    -- there are no return hooks in that time, and the two call hooks are
+    -- passed on to the original hook handler via tailcall
+    local function hook(event)
+      local info = debug.getinfo(2,"fu")
+      -- skip the call to require itself...
+      if info.func == require then
+        if oldhook and oldmask and oldmask:match("c") then
+          -- tailcall the original hook to preserve call event
+          return oldhook(event)
+        end
+        return
+      end
+      -- on the main chunk, replace it's _ENV upval with sandbox
+      local f = info.func
+      for i = 1,info.nups do -- this *should* always be upval 1 but just to be sure...
+        local name = debug.getupvalue(f,i)
+        if name == "_ENV" then
+          -- replace its _ENV with the sandbox
+          debug.upvaluejoin(f,i,function() return sandbox end,1)
+          break
+        end
+      end
+  
+      -- then restore previous hook and pass along the event
+      debug.sethook(oldhook,oldmask,oldcount)
+      if oldhook and oldmask and oldmask:match("c") then
+        -- and tailcall the original hook to preserve call event
+        return oldhook(event)
+      end
+    end
+    
+    local realpackage = package.loaded
+    if withpackage then
+      package.loaded = modpackages
+    end
+    debug.sethook(hook,"c")
+    local result = require(require_name)
+    if withpackage then
+      package.loaded = realpackage
+    end
+    return result
+  end
 
   -- on_event needs to be redirected to the events table, print warning when ignoring filters
   local function on_event(event,f,filters)
@@ -40,8 +100,7 @@ function modloader.load(modname)
       error({"","Invalid Event type ",etype},2)
     end
   end
-  local modpackages = {}
-  local sandbox = setmetatable({
+  sandbox = setmetatable({
     script = setmetatable({
       -- on_init/on_load need redirect, mod needs to handle possibly being added by on_load the first time if added in an update!
       on_init = function(f)
@@ -66,13 +125,7 @@ function modloader.load(modname)
       __debugtype = "modloader.LuaBootstrap",
       __index = script,
     }),
-    require = function(path)
-      local realpackage = package.loaded
-      package.loaded = modpackages
-      local result = require(path)
-      package.loaded = realpackage
-      return result
-    end,
+    require = sandbox_require,
     package = setmetatable({loaded = modpackages},{__index = package})
   },{
     __debugline = "<modloader _ENV for "..modname..">",
@@ -110,41 +163,7 @@ function modloader.load(modname)
   })
   modloader.env[modname] = sandbox
   
-  -- check for an existing hook:
-  local oldhook,oldmask,oldcount = debug.gethook()
-  -- this hook is only a call hook, which means losing a few line events,
-  -- but only between here and the start of the main chunk of the required file
-  -- there are no return hooks in that time, and the two call hooks are
-  -- passed on to the original hook handler via tailcall
-  debug.sethook(function(event)
-    local info = debug.getinfo(2,"fu")
-    -- skip the call to require itself...
-    if info.func == require then
-      if oldhook and oldmask and oldmask:match("c") then
-        -- tailcall the original hook to preserve call event
-        return oldhook(event)
-      end
-      return
-    end
-    -- on the main chunk, replace it's _ENV upval with sandbox
-    local f = info.func
-    for i = 1,info.nups do -- this *should* always be upval 1 but just to be sure...
-      local name = debug.getupvalue(f,i)
-      if name == "_ENV" then
-        -- replace its _ENV with the sandbox
-        debug.upvaluejoin(f,i,function() return sandbox end,1)
-        break
-      end
-    end
-
-    -- then restore previous hook and pass along the event
-    debug.sethook(oldhook,oldmask,oldcount)
-    if oldhook and oldmask and oldmask:match("c") then
-      -- and tailcall the original hook to preserve call event
-      return oldhook(event)
-    end
-  end,"c")
-  require("__"..modname.."__/control.lua")
+  sandbox_require("__"..modname.."__/control.lua",true)
   modloader.remote[modname] = loaded
   return modevents
 end

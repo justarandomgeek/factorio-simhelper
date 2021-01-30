@@ -1,0 +1,5 @@
+---------------------------------------------------------------------------------------------------
+Version: 1.1.1
+Date: ????
+  Changes:
+    - Fixed modloader `require` hook on additional required files from control.lua
