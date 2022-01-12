@@ -32,6 +32,59 @@
 ---only set if this value is used as an upvalue
 ---@field upval Upvalue|nil
 
+local function get_c_func_lut()
+  if __sim_c_func_lut then
+    return __sim_c_func_lut
+  end
+  -- NOTE: tables and functions as keys are currently not supported,
+  -- though with some work at least _some_ of them could be supported.
+  -- specifically those where the keys also exist as values somewhere in _ENV
+  -- which is honestly not even that likely if someone was using
+  -- tables or functions as keys to begin with
+  local supported_key_types = {
+    ["string"] = true,
+    ["number"] = true,
+    ["boolean"] = true,
+  }
+  local c_func_lut = {}
+  local visited = {}
+  local key_stack = {}
+  local function generate_expr()
+    local result = {"_ENV"}
+    for i, value in ipairs(key_stack) do
+      result[i + 1] = "["..(type(value) == "string" and string.format("%q", value) or tostring(value)).."]"
+    end
+    return table.concat(result)
+  end
+  local function walk(value)
+    if type(value) == "function" then
+      local info = debug.getinfo(value, "S")
+      if info.what == "C" then
+        c_func_lut[value] = generate_expr()
+      end
+      return
+    end
+    if type(value) ~= "table" then
+      return
+    end
+    if visited[value] then
+      return
+    end
+    visited[value] = true
+    for k, v in pairs(value) do
+      if supported_key_types[type(k)] then
+        key_stack[#key_stack+1] = k
+        walk(v)
+        key_stack[#key_stack] = nil
+      end
+    end
+  end
+  walk(_ENV)
+  -- set it after walking to not walk through our own global
+  __sim_c_func_lut = c_func_lut
+  return c_func_lut
+end
+
 local function sim_func(main_func)
   ---@type table<userdata, Upvalue>
   local upvals = {}
@@ -206,8 +259,14 @@ local function sim_func(main_func)
         end
         local data = debug.getinfo(value.func.raw_func, "S")
         if data.what == "C" then
-          -- TODO: handle c functions
-          result[#result+1] = "function()end"
+          local lut = get_c_func_lut()
+          local expr = lut[value.func.raw_func]
+          if not expr then
+            error("Unable to capture unknown c function. Did you remove it from \z
+              _ENV or use and store the result of gmatch or ipairs or similar?"
+            )
+          end
+          result[#result+1] = expr
         else
           result[#result+1] = string.format("assert(load(%q,nil,'b'))", string.dump(value.func.raw_func))
         end
