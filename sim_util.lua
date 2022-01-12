@@ -27,6 +27,8 @@
 ---@field ref_index integer|nil
 ---the expression to get this table or function
 ---@field ref_id string
+---index to resume at for an unfinished table due to not yet generated reference values as keys
+---@field resume_at integer|nil
 
 local function get_c_func_lut()
   if __sim_c_func_lut then
@@ -185,6 +187,8 @@ local function sim_func(main_func)
     return value.type == "table" or value.type == "function"
   end
 
+  local unfinished_tables = {}
+
   local result = {}
   local function generate_value(value, use_reference_ids)
     ({
@@ -208,21 +212,36 @@ local function sim_func(main_func)
         if value.is_env then
           result[#result+1] = "_ENV"
         else
-          result[#result+1] = "{"
-          for _, field in pairs(value.fields) do
-            if not is_reference_type(field.key) then
-              result[#result+1] = "["
-              generate_value(field.key)
-              result[#result+1] = "]="
-              if is_reference_type(field.value) then
-                result[#result+1] = "0," -- back reference
-              else
-                generate_value(field.value)
+          if not value.ref_id then
+            result[#result+1] = "{"
+          end
+          for i, field in next, value.fields, value.resume_at and value.resume_at ~= 1 and (value.resume_at - 1) or nil do
+            if is_reference_type(field.key) and not field.key.ref_id then
+              value.resume_at = i
+              unfinished_tables[#unfinished_tables+1] = value
+              break
+            end
+            if value.ref_id then
+              result[#result+1] = "\n"..value.ref_id
+            end
+            result[#result+1] = "["
+            generate_value(field.key, true)
+            result[#result+1] = "]="
+            if is_reference_type(field.value) and not field.value.ref_id then
+              assert(not value.ref_id,
+                "When finishing the generation of a table, all other references should be generated already"
+              )
+              result[#result+1] = "0," -- back reference
+            else
+              generate_value(field.value, true)
+              if not value.ref_id then
                 result[#result+1] = ","
               end
             end
           end
-          result[#result+1] = "}"
+          if not value.ref_id then
+            result[#result+1] = "}"
+          end
         end
       end,
       ["function"] = function()
@@ -249,22 +268,29 @@ local function sim_func(main_func)
 
   -- generate reference values
 
-  result[#result+1] = "local ref_values={\n"
+  result[#result+1] = "local ref_values={}"
   do
     local i = 0
     for _, value in pairs(ref_values) do
       i = i + 1
       value.ref_index = i
-      value.ref_id = "ref_values["..i.."]"
+      local ref_id = "ref_values["..i.."]"
+      result[#result+1] = "\n"..ref_id.."="
       generate_value(value)
-      result[#result+1] = ",\n"
+      value.ref_id = ref_id
     end
   end
-  result[#result+1] = "}\n"
+
+  -- finish unfinished tables
+
+  result[#result+1] = "\n"
+  for _, value in pairs(unfinished_tables) do
+    generate_value(value)
+  end
 
   -- generate dummy functions for upvalue joining
 
-  result[#result+1] = "\nlocal upvals={}"
+  result[#result+1] = "\n\nlocal upvals={}"
   for _, upval in pairs(upvals) do
     result[#result+1] = "\ndo local value="
     generate_value(upval.value, true)
@@ -277,8 +303,11 @@ local function sim_func(main_func)
   for _, value in pairs(ref_values) do
     if value.type == "table" then
       if not value.is_env then
-        for _, field in pairs(value.fields) do
-          if is_reference_type(field.key) or is_reference_type(field.value) then
+        for i, field in pairs(value.fields) do
+          if value.resume_at and i >= value.resume_at then
+            break
+          end
+          if is_reference_type(field.value) then
             result[#result+1] = value.ref_id.."["
             generate_value(field.key, true)
             result[#result+1] = "]="
