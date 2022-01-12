@@ -1,88 +1,126 @@
 
--- -- local foo = "fo"
--- local bar
--- (function()
---   local _,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_
---   local foo = "fo"
---   function bar()
---     if false then
---       print()
---     end
---     return foo
---   end
--- end)()
--- -- local function bar()
--- --   print()
--- --   return foo
--- -- end
+---cSpell:ignore upval, upvals, userdata, funcs, nups
 
--- local bar_dumped = string.dump(bar)
+---@class FunctionData
+---@field raw_func function
+---@field upvals Upvalue[]
 
--- local disassembler = require("__phobos__.disassembler")
+---@class TableField
+---@field key Value
+---@field value Value
 
--- local bar_disassembled = disassembler.disassemble(bar_dumped)
+---@class Upvalue
+---@field func FunctionData
+---@field upval_index integer
+---@field value Value
 
--- local bar_loaded = load(bar_dumped, nil, 'b', _ENV)
+---@class Value
+---only sed if this is used as an upvalue
+---@field index integer|nil
+---only sed if this is used as an upvalue\
+---generated from the index: `"_"..index`
+---@field id string|nil
+---@field type '"nil"'|'"number"'|'"string"'|'"boolean"'|'"table"'|'"function"'
+---for everything except functions, tables and _ENV
+---@field value any
+---for functions
+---@field func FunctionData
+---for tables; nil when `is_env`
+---@field fields TableField[]|nil
+---for tables
+---@field is_env boolean
+---only set if this value is used as an upvalue
+---@field upval Upvalue|nil
 
--- local bar_disassembled_again = disassembler.disassemble(string.dump(bar_loaded))
-
--- local dummy_upvalue = "fo"
--- local function dummy()
---   dummy_upvalue = nil
--- end
-
--- debug.upvaluejoin(bar_loaded, 2, dummy, 1)
-
--- local bar_disassembled_again_again = disassembler.disassemble(string.dump(bar_loaded))
-
--- print(bar_loaded())
-
-local function sim_func(func)
+local function sim_func(main_func)
+  ---@type table<userdata, Upvalue>
+  local upvals = {}
+  ---@type Value[]
   local values = {}
-  local is_func = {}
-  local funcs = {}
-  local function add_value(val)
-    if values[val] then
-      return
+  local value_count = 0
+  ---@type table<function|table, Value>
+  local reference_value_lut = {}
+
+  local add_upval
+
+  local function add_basic(type, value, is_used_as_upval)
+    local result = {
+      type = type,
+      value = value,
+    }
+    if is_used_as_upval then
+      value_count = value_count + 1
+      result.index = value_count
+      values[value_count] = result
     end
-    ({
+    return result
+  end
+
+  local function add_value(value, is_used_as_upval)
+    if reference_value_lut[value] then
+      return reference_value_lut[value]
+    end
+    return ({
       ["nil"] = function()
-        -- I think this is fine doing nothing
+        return add_basic("nil", value, is_used_as_upval)
       end,
       ["number"] = function()
-        values[val] = tostring(val)
+        return add_basic("number", value, is_used_as_upval)
       end,
       ["string"] = function()
-        values[val] = string.format("%q", val)
+        return add_basic("string", value, is_used_as_upval)
       end,
       ["boolean"] = function()
-        values[val] = tostring(val)
+        return add_basic("boolean", value, is_used_as_upval)
       end,
       ["table"] = function()
-        if val == _ENV then
-          values[val] = val
-          return
+        if value == _ENV then
+          value_count = value_count + 1
+          local result = {
+            index = value_count,
+            type = "table",
+            is_env = true,
+          }
+          values[value_count] = result
+          reference_value_lut[value] = result
+          return result
         end
-        -- TODO: handle functions inside tables
-        -- TODO: and maybe tables inside tables that occur multiple times... if that makes sense
-        values[val] = "(function()"..serpent.dump(val).." end)()"
+        value_count = value_count + 1
+        local result = {
+          index = value_count,
+          type = "table",
+          fields = {},
+        }
+        values[value_count] = result
+        reference_value_lut[value] = result
+        local field_count = 0
+        for k, v in pairs(value) do
+          field_count = field_count + 1
+          result.fields[field_count] = {
+            key = add_value(k),
+            value = add_value(v),
+          }
+        end
+        return result
       end,
       ["function"] = function()
-        local info = debug.getinfo(val, "u")
-        local func_data = {
-          create_value_str = string.format("assert(load(%q,nil,'b'))", string.dump(val)),
-          func = val,
-          upval_values = {},
-          upval_count = info.nups,
+        local func = {
+          raw_func = value,
+          upvals = {},
         }
-        values[val] = func_data
-        is_func[val] = true
-        funcs[#funcs+1] = func_data
-        for i = 1, func_data.upval_count do
-          local name, value = debug.getupvalue(val, i)
-          func_data.upval_values[i] = value
-          add_value(value)
+        value_count = value_count + 1
+        local result = {
+          index = value_count,
+          type = "function",
+          func = func,
+        }
+        values[value_count] = result
+        reference_value_lut[value] = result
+        local info = debug.getinfo(value, "u")
+        for i = 1, info.nups do
+          func.upvals[i] = add_upval(func, i)
         end
+        return result
       end,
       ["thread"] = function()
         error("How did you even get a 'thread' object?")
@@ -90,48 +128,135 @@ local function sim_func(func)
       ["userdata"] = function()
         error("Cannot have a 'userdata' upvalue for a simulation function.")
       end,
-    })[type(val)]()
+    })[type(value)]()
   end
 
-  add_value(func)
-
-  local result = {"\n"}
-  local value_indexes = {}
-  local value_count
-  do
-    local i = 1
-    for value, string_value in pairs(values) do
-      value_indexes[value] = i
-      result[#result+1] = "local _"..i.."="
-      result[#result+1] = value == _ENV and "_ENV" or (is_func[value] and string_value.create_value_str or string_value)
-      result[#result+1] = "\n\n"
-      i = i + 1
+  function add_upval(func, upval_index)
+    local id = debug.upvalueid(func.raw_func, upval_index)
+    if upvals[id] then
+      return upvals[id]
     end
-    value_count = i - 1
+    local name, value = debug.getupvalue(func.raw_func, upval_index)
+    local upval = {
+      func = func,
+      -- upval_index = upval_index,
+      value = add_value(value, true),
+    }
+    upval.value.upval = upval
+    upvals[id] = upval
+    return upval
   end
 
-  result[#result+1] = "\nlocal function dummy()"
-  for i = 1, value_count do
-    result[#result+1] = "_"
-    result[#result+1] = tonumber(i)
+  local main_value = add_value(main_func)
+
+  for _, value in pairs(values) do
+    value.id = "_"..value.index
+  end
+
+  -- generate values into locals
+
+  local function is_reference_type(value)
+    return value.type == "table" or value.type == "function"
+  end
+
+  local result = {}
+  local function generate_value(value, use_reference_ids)
+    ({
+      ["nil"] = function()
+        result[#result+1] = "nil"
+      end,
+      ["number"] = function()
+        result[#result+1] = tostring(value.value)
+      end,
+      ["string"] = function()
+        result[#result+1] = string.format("%q", value.value)
+      end,
+      ["boolean"] = function()
+        result[#result+1] = tostring(value.value)
+      end,
+      ["table"] = function()
+        if use_reference_ids then
+          result[#result+1] = value.id
+          return
+        end
+        if value.is_env then
+          result[#result+1] = "_ENV"
+        else
+          result[#result+1] = "{"
+          for _, field in pairs(value.fields) do
+            if not is_reference_type(field.key) then
+              result[#result+1] = "["
+              generate_value(field.key)
+              result[#result+1] = "]="
+              if is_reference_type(field.value) then
+                result[#result+1] = "0," -- back reference
+              else
+                generate_value(field.value)
+                result[#result+1] = ","
+              end
+            end
+          end
+          result[#result+1] = "}"
+        end
+      end,
+      ["function"] = function()
+        if use_reference_ids then
+          result[#result+1] = value.id
+          return
+        end
+        local data = debug.getinfo(value.func.raw_func, "S")
+        if data.what == "C" then
+          -- TODO: handle c functions
+          result[#result+1] = "function()end"
+        else
+          result[#result+1] = string.format("assert(load(%q,nil,'b'))", string.dump(value.func.raw_func))
+        end
+      end,
+    })[value.type]()
+  end
+
+  for _, value in pairs(values) do
+    result[#result+1] = "\nlocal "..value.id.."="
+    generate_value(value)
+  end
+
+  -- create dummy function for upvalue joining
+
+  result[#result+1] = "\n\nlocal function dummy()"
+  for _, value in pairs(values) do
+    result[#result+1] = value.id
     result[#result+1] = "=nil;"
   end
   result[#result+1] = "end\n\n"
 
-  for _, func_data in ipairs(funcs) do
-    local func_local = "_"..value_indexes[func_data.func]
-    for i = 1, func_data.upval_count do
-      local value = func_data.upval_values[i]
-      result[#result+1] = "debug.upvaluejoin("..func_local..","..i..",dummy,"..value_indexes[value]..")\n"
+  -- resolve references
+
+  for _, value in pairs(reference_value_lut) do
+    if value.type == "table" then
+      if not value.is_env then
+        for _, field in pairs(value.fields) do
+          if is_reference_type(field.key) or is_reference_type(field.value) then
+            result[#result+1] = value.id.."["
+            generate_value(field.key, true)
+            result[#result+1] = "]="
+            generate_value(field.value, true)
+            result[#result+1] = "\n"
+          end
+        end
+      end
+    elseif value.type == "function" then
+      for upval_index, upval in pairs(value.func.upvals) do
+        result[#result+1] = "debug.upvaluejoin("..value.id..","..upval_index..",dummy,"..upval.value.index..")\n"
+      end
+    else
+      error("A "..value.type.." value was in the reference_value_lut which is just wrong.")
     end
   end
 
-  result[#result+1] = "\nreturn _1(...)"
+  result[#result+1] = "\nreturn ("..main_value.id.."(...))"
 
   local result_string = table.concat(result)
-  -- log(result_string)
   return result_string
-  -- return string.format("local main_chunk=assert(load(%q,nil,'b'))\nreturn main_chunk(...)", string.dump(func))
 end
 
 return {
