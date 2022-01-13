@@ -87,6 +87,9 @@ local function get_c_func_lut()
   end
   walk(_ENV)
   -- set it after walking to not walk through our own global
+  if __DebugAdapter then
+    __DebugAdapter.defineGlobal("__funccapture_c_function_lut")
+  end
   __funccapture_c_function_lut = c_func_lut
   return c_func_lut
 end
