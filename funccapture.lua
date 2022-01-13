@@ -12,7 +12,7 @@
 ---@field upval_id string
 
 ---@class Value
----@field type '"nil"'|'"number"'|'"string"'|'"boolean"'|'"table"'|'"function"'
+---@field type '"nil"'|'"number"'|'"string"'|'"boolean"'|'"table"'|'"function"'|'"custom"'
 ---for everything except functions, tables and _ENV
 ---@field value any
 ---for functions
@@ -29,36 +29,44 @@
 ---@field ref_id string
 ---index to resume at for an unfinished table due to not yet generated reference values as keys
 ---@field resume_at integer|nil
+---for custom
+---@field custom_expr string
+
+-- NOTE: tables and functions as keys are currently not supported,
+-- though with some work at least _some_ of them could be supported.
+-- specifically those where the keys also exist as values somewhere in _ENV
+-- which is honestly not even that likely if someone was using
+-- tables or functions as keys to begin with
+local supported_key_types = {
+  ["string"] = true,
+  ["number"] = true,
+  ["boolean"] = true,
+}
+
+local function generate_expr(keys)
+  local result = {"_ENV"}
+  for i, value in ipairs(keys) do
+    local value_type = type(value)
+    if not supported_key_types[value_type] then
+      error("Expressions indexing into '_ENV' (global) can only use strings, numbers and booleans as keys.")
+    end
+    result[i + 1] = "["..(value_type == "string" and string.format("%q", value) or tostring(value)).."]"
+  end
+  return table.concat(result)
+end
 
 local function get_c_func_lut()
   if __funccapture_c_function_lut then
     return __funccapture_c_function_lut
   end
-  -- NOTE: tables and functions as keys are currently not supported,
-  -- though with some work at least _some_ of them could be supported.
-  -- specifically those where the keys also exist as values somewhere in _ENV
-  -- which is honestly not even that likely if someone was using
-  -- tables or functions as keys to begin with
-  local supported_key_types = {
-    ["string"] = true,
-    ["number"] = true,
-    ["boolean"] = true,
-  }
   local c_func_lut = {}
   local visited = {}
   local key_stack = {}
-  local function generate_expr()
-    local result = {"_ENV"}
-    for i, value in ipairs(key_stack) do
-      result[i + 1] = "["..(type(value) == "string" and string.format("%q", value) or tostring(value)).."]"
-    end
-    return table.concat(result)
-  end
   local function walk(value)
     if type(value) == "function" then
       local info = debug.getinfo(value, "S")
       if info.what == "C" then
-        c_func_lut[value] = generate_expr()
+        c_func_lut[value] = generate_expr(key_stack)
       end
       return
     end
@@ -83,7 +91,19 @@ local function get_c_func_lut()
   return c_func_lut
 end
 
-local function sim_func(main_func)
+local function sim_func(main_func, custom_restorers)
+  local custom_restore_lut = {}
+  for _, custom_restorer in pairs(custom_restorers) do
+    local name = custom_restorer.upvalue_name
+    if custom_restore_lut[name] then
+      error("Duplicate custom restorer registered for upvalue_name '"..name.."'")
+    end
+    custom_restore_lut[name] = {
+      type = "custom",
+      custom_expr = generate_expr(custom_restorer.restore_as_global),
+    }
+  end
+
   ---@type table<userdata, Upvalue>
   local upvals = {}
   local upval_count = 0
@@ -168,7 +188,7 @@ local function sim_func(main_func)
       return upvals[id]
     end
     local name, raw_value = debug.getupvalue(func, upval_index)
-    local value = add_value(raw_value)
+    local value = custom_restore_lut[name] or add_value(raw_value)
     upval_count = upval_count + 1
     local upval = {
       value = value,
@@ -267,6 +287,9 @@ local function sim_func(main_func)
           result[#result+1] = string.format("assert(load(%q,nil,'b'))", string.dump(value.func))
         end
       end,
+      ["custom"] = function()
+        result[#result+1] = value.custom_expr
+      end,
     })[value.type]()
   end
 
@@ -311,7 +334,7 @@ local function sim_func(main_func)
   for _, upval in pairs(upvals) do
     result[#result+1] = "\ndo local value="
     generate_value(upval.value, true)
-    result[#result+1] = " "..upval.upval_id.."=function()value=nil end end"
+    result[#result+1] = " "..upval.upval_id.."=function()return value end end"
   end
   result[#result+1] = "\n\nlocal upvaluejoin=debug.upvaluejoin\n\n"
 
@@ -325,7 +348,7 @@ local function sim_func(main_func)
     end
   end
 
-  result[#result+1] = "\nreturn ("..main_value.ref_id.."(...))"
+  result[#result+1] = "\nreturn "..main_value.ref_id.."(...)"
 
   local result_string = table.concat(result)
   return result_string
