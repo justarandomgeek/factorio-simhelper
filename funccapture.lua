@@ -122,24 +122,22 @@ local function capture(main_func, custom_restorers)
     }
   end
 
-  local function add_value(value)
-    if ref_values[value] then
-      return ref_values[value]
-    end
-    return ({
-      ["nil"] = function()
+  local add_value
+  do
+    local cases = {
+      ["nil"] = function(value)
         return add_basic("nil", value)
       end,
-      ["number"] = function()
+      ["number"] = function(value)
         return add_basic("number", value)
       end,
-      ["string"] = function()
+      ["string"] = function(value)
         return add_basic("string", value)
       end,
-      ["boolean"] = function()
+      ["boolean"] = function(value)
         return add_basic("boolean", value)
       end,
-      ["table"] = function()
+      ["table"] = function(value)
         if value == _ENV then
           local result = {
             type = "table",
@@ -163,7 +161,7 @@ local function capture(main_func, custom_restorers)
         end
         return result
       end,
-      ["function"] = function()
+      ["function"] = function(value)
         local result = {
           type = "function",
           func = value,
@@ -182,7 +180,13 @@ local function capture(main_func, custom_restorers)
       ["userdata"] = function()
         error("Cannot have a 'userdata' upvalue for a simulation function.")
       end,
-    })[type(value)]()
+    }
+    function add_value(value)
+      if ref_values[value] then
+        return ref_values[value]
+      end
+      return cases[type(value)](value)
+    end
   end
 
   function add_upval(func, upval_index)
@@ -219,21 +223,22 @@ local function capture(main_func, custom_restorers)
 
   local result = {}
   local rc = 0
-  local function generate_value(value, use_reference_ids)
-    ({
-      ["nil"] = function()
+  local generate_value
+  do
+    local cases = {
+      ["nil"] = function(value, use_reference_ids)
         rc=rc+1;result[rc] = "nil"
       end,
-      ["number"] = function()
+      ["number"] = function(value, use_reference_ids)
         rc=rc+1;result[rc] = tostring(value.value)
       end,
-      ["string"] = function()
+      ["string"] = function(value, use_reference_ids)
         rc=rc+1;result[rc] = string.format("%q", value.value)
       end,
-      ["boolean"] = function()
+      ["boolean"] = function(value, use_reference_ids)
         rc=rc+1;result[rc] = tostring(value.value)
       end,
-      ["table"] = function()
+      ["table"] = function(value, use_reference_ids)
         if use_reference_ids then
           rc=rc+1;result[rc] = value.ref_id
           return
@@ -277,7 +282,7 @@ local function capture(main_func, custom_restorers)
           end
         end
       end,
-      ["function"] = function()
+      ["function"] = function(value, use_reference_ids)
         if use_reference_ids then
           rc=rc+1;result[rc] = value.ref_id
           return
@@ -296,10 +301,13 @@ local function capture(main_func, custom_restorers)
           rc=rc+1;result[rc] = string.format("assert(load(%q,nil,'b'))", string.dump(value.func))
         end
       end,
-      ["custom"] = function()
+      ["custom"] = function(value, use_reference_ids)
         rc=rc+1;result[rc] = value.custom_expr
       end,
-    })[value.type]()
+    }
+    function generate_value(value, use_reference_ids)
+      cases[value.type](value, use_reference_ids)
+    end
   end
 
   -- generate reference values
