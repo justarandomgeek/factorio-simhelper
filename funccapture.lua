@@ -227,7 +227,7 @@ local function sim_func(main_func)
             result[#result+1] = "["
             generate_value(field.key, true)
             result[#result+1] = "]="
-            if is_reference_type(field.value) and not field.value.ref_id then
+            if is_reference_type(field.value) and not field.value.ref_id then -- TODO: just remove the ref_id check, too much effort, not worth it
               assert(not value.ref_id,
                 "When finishing the generation of a table, all other references should be generated already"
               )
