@@ -188,6 +188,8 @@ local function sim_func(main_func)
   end
 
   local unfinished_tables = {}
+  local back_reference_tables = {}
+  local back_reference_fields = {}
 
   local result = {}
   local function generate_value(value, use_reference_ids)
@@ -227,11 +229,13 @@ local function sim_func(main_func)
             result[#result+1] = "["
             generate_value(field.key, true)
             result[#result+1] = "]="
-            if is_reference_type(field.value) and not field.value.ref_id then -- TODO: just remove the ref_id check, too much effort, not worth it
+            if is_reference_type(field.value) and not field.value.ref_id then
               assert(not value.ref_id,
                 "When finishing the generation of a table, all other references should be generated already"
               )
               result[#result+1] = "0," -- back reference
+              back_reference_tables[#back_reference_tables+1] = value
+              back_reference_fields[#back_reference_fields+1] = field
             else
               generate_value(field.value, true)
               if not value.ref_id then
@@ -288,9 +292,22 @@ local function sim_func(main_func)
     generate_value(value)
   end
 
+  -- finish back references
+
+  result[#result+1] = "\n\n"
+  for i = 1, #back_reference_tables do
+    local tab = back_reference_tables[i]
+    local field = back_reference_fields[i]
+    result[#result+1] = tab.ref_id.."["
+    generate_value(field.key, true)
+    result[#result+1] = "]="
+    generate_value(field.value, true)
+    result[#result+1] = "\n"
+  end
+
   -- generate dummy functions for upvalue joining
 
-  result[#result+1] = "\n\nlocal upvals={}"
+  result[#result+1] = "\nlocal upvals={}"
   for _, upval in pairs(upvals) do
     result[#result+1] = "\ndo local value="
     generate_value(upval.value, true)
@@ -298,34 +315,17 @@ local function sim_func(main_func)
   end
   result[#result+1] = "\n\nlocal upvaluejoin=debug.upvaluejoin\n\n"
 
-  -- resolve references
+  -- restore upvals
 
   for _, value in pairs(ref_values) do
-    if value.type == "table" then
-      if not value.is_env then
-        for i, field in pairs(value.fields) do
-          if value.resume_at and i >= value.resume_at then
-            break
-          end
-          if is_reference_type(field.value) then
-            result[#result+1] = value.ref_id.."["
-            generate_value(field.key, true)
-            result[#result+1] = "]="
-            generate_value(field.value, true)
-            result[#result+1] = "\n"
-          end
-        end
-      end
-    elseif value.type == "function" then
+    if value.type == "function" then
       for upval_index, upval in pairs(value.upvals) do
         result[#result+1] = "upvaluejoin("..value.ref_id..","..upval_index..","..upval.upval_id..",1)\n"
       end
-    else
-      error("A "..value.type.." value was in the reference_value_lut which is just wrong.")
     end
   end
 
-  result[#result+1] = "\nreturn "..main_value.ref_id.."(...)"
+  result[#result+1] = "\nreturn ("..main_value.ref_id.."(...))"
 
   local result_string = table.concat(result)
   return result_string
