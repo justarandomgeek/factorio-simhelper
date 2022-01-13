@@ -94,7 +94,7 @@ local function get_c_func_lut()
   return c_func_lut
 end
 
-local function sim_func(main_func, custom_restorers)
+local function capture(main_func, custom_restorers)
   local custom_restore_lut = {}
   for _, custom_restorer in pairs(custom_restorers) do
     local name = custom_restorer.upvalue_name
@@ -358,5 +358,5 @@ local function sim_func(main_func, custom_restorers)
 end
 
 return {
-  sim_func = sim_func,
+  capture = capture,
 }
