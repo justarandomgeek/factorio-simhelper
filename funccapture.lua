@@ -1,5 +1,5 @@
 
----cSpell:ignore upvalue, upval, upvals, userdata, funcs, nups
+---cSpell:ignore upvalue, upval, upvals, userdata, funcs, nups, funccapture
 
 ---@class TableField
 ---@field key Value
@@ -31,8 +31,8 @@
 ---@field resume_at integer|nil
 
 local function get_c_func_lut()
-  if __sim_c_func_lut then
-    return __sim_c_func_lut
+  if __funccapture_c_function_lut then
+    return __funccapture_c_function_lut
   end
   -- NOTE: tables and functions as keys are currently not supported,
   -- though with some work at least _some_ of them could be supported.
@@ -79,7 +79,7 @@ local function get_c_func_lut()
   end
   walk(_ENV)
   -- set it after walking to not walk through our own global
-  __sim_c_func_lut = c_func_lut
+  __funccapture_c_function_lut = c_func_lut
   return c_func_lut
 end
 
