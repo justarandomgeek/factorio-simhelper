@@ -62,7 +62,7 @@ local function get_c_func_lut()
   local c_func_lut = {}
   local visited = {}
   local key_stack = {}
-  local function walk(value)
+  local function walk(value, depth)
     if type(value) == "function" then
       local info = debug.getinfo(value, "S")
       if info.what == "C" then
@@ -79,13 +79,13 @@ local function get_c_func_lut()
     visited[value] = true
     for k, v in pairs(value) do
       if supported_key_types[type(k)] then
-        key_stack[#key_stack+1] = k
-        walk(v)
-        key_stack[#key_stack] = nil
+        key_stack[depth] = k
+        walk(v, depth + 1)
+        key_stack[depth] = nil
       end
     end
   end
-  walk(_ENV)
+  walk(_ENV, 1)
   -- set it after walking to not walk through our own global
   if __DebugAdapter then
     __DebugAdapter.defineGlobal("__funccapture_c_function_lut")
@@ -211,69 +211,75 @@ local function capture(main_func, custom_restorers)
   end
 
   local unfinished_tables = {}
+  local unfinished_tables_count = 0
+
   local back_reference_tables = {}
   local back_reference_fields = {}
+  local back_references_count = 0
 
   local result = {}
+  local rc = 0
   local function generate_value(value, use_reference_ids)
     ({
       ["nil"] = function()
-        result[#result+1] = "nil"
+        rc=rc+1;result[rc] = "nil"
       end,
       ["number"] = function()
-        result[#result+1] = tostring(value.value)
+        rc=rc+1;result[rc] = tostring(value.value)
       end,
       ["string"] = function()
-        result[#result+1] = string.format("%q", value.value)
+        rc=rc+1;result[rc] = string.format("%q", value.value)
       end,
       ["boolean"] = function()
-        result[#result+1] = tostring(value.value)
+        rc=rc+1;result[rc] = tostring(value.value)
       end,
       ["table"] = function()
         if use_reference_ids then
-          result[#result+1] = value.ref_id
+          rc=rc+1;result[rc] = value.ref_id
           return
         end
         if value.is_env then
-          result[#result+1] = "_ENV"
+          rc=rc+1;result[rc] = "_ENV"
         else
           if not value.ref_id then
-            result[#result+1] = "{"
+            rc=rc+1;result[rc] = "{"
           end
           for i, field in next, value.fields, value.resume_at and value.resume_at ~= 1 and (value.resume_at - 1) or nil do
             if is_reference_type(field.key) and not field.key.ref_id then
               value.resume_at = i
-              unfinished_tables[#unfinished_tables+1] = value
+              unfinished_tables_count = unfinished_tables_count + 1
+              unfinished_tables[unfinished_tables_count] = value
               break
             end
             if value.ref_id then
-              result[#result+1] = "\n"..value.ref_id
+              rc=rc+1;result[rc] = "\n"..value.ref_id
             end
-            result[#result+1] = "["
+            rc=rc+1;result[rc] = "["
             generate_value(field.key, true)
-            result[#result+1] = "]="
+            rc=rc+1;result[rc] = "]="
             if is_reference_type(field.value) and not field.value.ref_id then
               assert(not value.ref_id,
                 "When finishing the generation of a table, all other references should be generated already"
               )
-              result[#result+1] = "0," -- back reference
-              back_reference_tables[#back_reference_tables+1] = value
-              back_reference_fields[#back_reference_fields+1] = field
+              rc=rc+1;result[rc] = "0," -- back reference
+              back_references_count = back_references_count + 1
+              back_reference_tables[back_references_count] = value
+              back_reference_fields[back_references_count] = field
             else
               generate_value(field.value, true)
               if not value.ref_id then
-                result[#result+1] = ","
+                rc=rc+1;result[rc] = ","
               end
             end
           end
           if not value.ref_id then
-            result[#result+1] = "}"
+            rc=rc+1;result[rc] = "}"
           end
         end
       end,
       ["function"] = function()
         if use_reference_ids then
-          result[#result+1] = value.ref_id
+          rc=rc+1;result[rc] = value.ref_id
           return
         end
         local data = debug.getinfo(value.func, "S")
@@ -285,27 +291,27 @@ local function capture(main_func, custom_restorers)
               _ENV or use and store the result of gmatch or ipairs or similar?"
             )
           end
-          result[#result+1] = expr
+          rc=rc+1;result[rc] = expr
         else
-          result[#result+1] = string.format("assert(load(%q,nil,'b'))", string.dump(value.func))
+          rc=rc+1;result[rc] = string.format("assert(load(%q,nil,'b'))", string.dump(value.func))
         end
       end,
       ["custom"] = function()
-        result[#result+1] = value.custom_expr
+        rc=rc+1;result[rc] = value.custom_expr
       end,
     })[value.type]()
   end
 
   -- generate reference values
 
-  result[#result+1] = "local ref_values={}"
+  rc=rc+1;result[rc] = "local ref_values={}"
   do
     local i = 0
     for _, value in pairs(ref_values) do
       i = i + 1
       value.ref_index = i
       local ref_id = "ref_values["..i.."]"
-      result[#result+1] = "\n"..ref_id.."="
+      rc=rc+1;result[rc] = "\n"..ref_id.."="
       generate_value(value)
       value.ref_id = ref_id
     end
@@ -313,45 +319,45 @@ local function capture(main_func, custom_restorers)
 
   -- finish unfinished tables
 
-  result[#result+1] = "\n"
+  rc=rc+1;result[rc] = "\n"
   for _, value in pairs(unfinished_tables) do
     generate_value(value)
   end
 
   -- finish back references
 
-  result[#result+1] = "\n\n"
-  for i = 1, #back_reference_tables do
+  rc=rc+1;result[rc] = "\n\n"
+  for i = 1, back_references_count do
     local tab = back_reference_tables[i]
     local field = back_reference_fields[i]
-    result[#result+1] = tab.ref_id.."["
+    rc=rc+1;result[rc] = tab.ref_id.."["
     generate_value(field.key, true)
-    result[#result+1] = "]="
+    rc=rc+1;result[rc] = "]="
     generate_value(field.value, true)
-    result[#result+1] = "\n"
+    rc=rc+1;result[rc] = "\n"
   end
 
   -- generate dummy functions for upvalue joining
 
-  result[#result+1] = "\nlocal upvals={}"
+  rc=rc+1;result[rc] = "\nlocal upvals={}"
   for _, upval in pairs(upvals) do
-    result[#result+1] = "\ndo local value="
+    rc=rc+1;result[rc] = "\ndo local value="
     generate_value(upval.value, true)
-    result[#result+1] = " "..upval.upval_id.."=function()return value end end"
+    rc=rc+1;result[rc] = " "..upval.upval_id.."=function()return value end end"
   end
-  result[#result+1] = "\n\nlocal upvaluejoin=debug.upvaluejoin\n\n"
+  rc=rc+1;result[rc] = "\n\nlocal upvaluejoin=debug.upvaluejoin\n\n"
 
   -- restore upvals
 
   for _, value in pairs(ref_values) do
     if value.type == "function" then
       for upval_index, upval in pairs(value.upvals) do
-        result[#result+1] = "upvaluejoin("..value.ref_id..","..upval_index..","..upval.upval_id..",1)\n"
+        rc=rc+1;result[rc] = "upvaluejoin("..value.ref_id..","..upval_index..","..upval.upval_id..",1)\n"
       end
     end
   end
 
-  result[#result+1] = "\nreturn "..main_value.ref_id.."(...)"
+  rc=rc+1;result[rc] = "\nreturn "..main_value.ref_id.."(...)"
 
   local result_string = table.concat(result)
   return result_string
