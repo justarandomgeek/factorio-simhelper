@@ -63,14 +63,15 @@ local function get_c_func_lut()
   local visited = {}
   local key_stack = {}
   local function walk(value, depth)
-    if type(value) == "function" then
+    local value_type = type(value)
+    if value_type == "function" then
       local info = debug.getinfo(value, "S")
       if info.what == "C" then
         c_func_lut[value] = generate_expr(key_stack)
       end
       return
     end
-    if type(value) ~= "table" then
+    if value_type ~= "table" then
       return
     end
     if visited[value] then
