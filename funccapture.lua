@@ -1,5 +1,5 @@
 
----cSpell:ignore upvalue, upval, upvals, userdata, funcs, nups, funccapture
+---cSpell:ignore upvalue, upval, upvals, userdata, funcs, nups, funccapture, simhelper
 
 ---@class TableField
 ---@field key Value
@@ -48,17 +48,46 @@ local function generate_expr(keys)
   for i, value in ipairs(keys) do
     local value_type = type(value)
     if not supported_key_types[value_type] then
-      error("Expressions indexing into '_ENV' (global) can only use strings, numbers and booleans as keys.")
+      error("Expressions indexing into '_ENV' can only use strings, numbers and booleans as keys.")
     end
     result[i + 1] = "["..(value_type == "string" and string.format("%q", value) or tostring(value)).."]"
   end
   return table.concat(result)
 end
 
+if __DebugAdapter then
+  __DebugAdapter.defineGlobal("__simhelper_funccapture")
+end
+__simhelper_funccapture = {
+  tables_to_ignore = setmetatable({}, {__mode = "k"}), -- weak keys
+  c_func_lut_cache = nil,
+}
+
+local function ensure_is_table(tab)
+  assert(type(tab) == "table", "Can only ignore values of type 'table'.")
+end
+
+local function ignore_table_in_env(tab)
+  ensure_is_table(tab)
+  __simhelper_funccapture.tables_to_ignore[tab] = true
+end
+
+local function un_ignore_table_in_env(tab)
+  ensure_is_table(tab)
+  __simhelper_funccapture.tables_to_ignore[tab] = nil
+end
+
+ignore_table_in_env(__simhelper_funccapture)
+-- ignore `data` by default, because it's a giant nested table that doesn't contain any c functions
+if data then
+  ignore_table_in_env(data)
+end
+
 local function get_c_func_lut()
-  if __funccapture_c_function_lut then
-    return __funccapture_c_function_lut
+  if __simhelper_funccapture.c_func_lut_cache then
+    return __simhelper_funccapture.c_func_lut_cache
   end
+  local ignored = __simhelper_funccapture.tables_to_ignore
   local c_func_lut = {}
   local visited = {}
   local key_stack = {}
@@ -74,7 +103,7 @@ local function get_c_func_lut()
     if value_type ~= "table" then
       return
     end
-    if visited[value] then
+    if visited[value] or ignored[value] then
       return
     end
     visited[value] = true
@@ -87,11 +116,7 @@ local function get_c_func_lut()
     end
   end
   walk(_ENV, 1)
-  -- set it after walking to not walk through our own global
-  if __DebugAdapter then
-    __DebugAdapter.defineGlobal("__funccapture_c_function_lut")
-  end
-  __funccapture_c_function_lut = c_func_lut
+  __simhelper_funccapture.c_func_lut_cache = c_func_lut
   return c_func_lut
 end
 
@@ -374,4 +399,6 @@ end
 
 return {
   capture = capture,
+  ignore_table_in_env = ignore_table_in_env,
+  un_ignore_table_in_env = un_ignore_table_in_env,
 }

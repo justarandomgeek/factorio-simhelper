@@ -123,3 +123,24 @@ Any upvalue with the name `settings` will then be restored as defined by `restor
 `restore_as_global` takes an array of keys (strings, numbers or booleans) to index into `_ENV` with. Examples:
 - `{"settings"}`: will restore as `_ENV["settings"]`
 - `{"foo", "bar"}`: will resoter as `_ENV["foo"]["bar"]`
+
+### Performance with huge tables in _ENV
+
+While it doesn't _capture_ anything in `_ENV`, it does have to look through `_ENV` to find all C functions it can restore in the new Lua state later down the road. C functions being all the library functions, for example all the functions in `table`.
+
+In order to find all of those functions it loops through the _entire_ `_ENV` table. However there can be some gigantic tables in there that don't actually contain any of the C functions it's looking for, which is a waste of performance. For example the `data` table is huge and doesn't contain any C functions, therefore it should be ignored, which it is already by default so don't worry about that, it's just an example. However if you have your own huge table in `_ENV` be sure to `ignore_table_in_env(tab)` it:
+
+```lua
+local func_capture = require("__simhelper__.funccapture")
+
+my_huge_table = {
+  -- ...
+}
+func_capture.ignore_table_in_env(my_huge_table)
+```
+
+And by "huge" I mean like several thousands of key value pairs, including nested ones.
+
+Make sure to ignore it immediately after adding it to `_ENV`. It technicaly doesn't have to be immediate, it's just easier that way to avoid any `capture()` calls in between adding it to `_ENV` and ignoring it, since this search happens as part of `capture()` if there are any C function upvalues, (and the mapping is cached, so it only happens once).
+
+For completeness sake there is also `un_ignore_table_in_env(tab)` which will undo the registration of `tab` but even if you don't deregister it, it won't keep the table alive forever because it's stored in a weak table.
