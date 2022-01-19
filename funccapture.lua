@@ -32,6 +32,10 @@
 ---for custom
 ---@field custom_expr string
 
+local step_ignore = __DebugAdapter
+  and __DebugAdapter.stepIgnore
+  or function(func) return func end
+
 -- NOTE: tables and functions as keys are currently not supported,
 -- though with some work at least _some_ of them could be supported.
 -- specifically those where the keys also exist as values somewhere in _ENV
@@ -43,7 +47,7 @@ local supported_key_types = {
   ["boolean"] = true,
 }
 
-local function generate_expr(keys)
+local generate_expr = step_ignore(function(keys)
   local result = {"_ENV"}
   for i, value in ipairs(keys) do
     local value_type = type(value)
@@ -53,7 +57,7 @@ local function generate_expr(keys)
     result[i + 1] = "["..(value_type == "string" and string.format("%q", value) or tostring(value)).."]"
   end
   return table.concat(result)
-end
+end)
 
 if __DebugAdapter then
   __DebugAdapter.defineGlobal("__simhelper_funccapture")
@@ -63,19 +67,19 @@ __simhelper_funccapture = {
   c_func_lut_cache = nil,
 }
 
-local function ensure_is_table(tab)
+local ensure_is_table = step_ignore(function(tab)
   assert(type(tab) == "table", "Can only ignore values of type 'table'.")
-end
+end)
 
-local function ignore_table_in_env(tab)
+local ignore_table_in_env = step_ignore(function(tab)
   ensure_is_table(tab)
   __simhelper_funccapture.tables_to_ignore[tab] = true
-end
+end)
 
-local function un_ignore_table_in_env(tab)
+local un_ignore_table_in_env = step_ignore(function(tab)
   ensure_is_table(tab)
   __simhelper_funccapture.tables_to_ignore[tab] = nil
-end
+end)
 
 ignore_table_in_env(__simhelper_funccapture)
 -- ignore `data` by default, because it's a giant nested table that doesn't contain any c functions
@@ -83,7 +87,7 @@ if data then
   ignore_table_in_env(data)
 end
 
-local function get_c_func_lut()
+local get_c_func_lut = step_ignore(function()
   if __simhelper_funccapture.c_func_lut_cache then
     return __simhelper_funccapture.c_func_lut_cache
   end
@@ -91,7 +95,8 @@ local function get_c_func_lut()
   local c_func_lut = {}
   local visited = {}
   local key_stack = {}
-  local function walk(value, depth)
+  local walk
+  walk = step_ignore(function(value, depth)
     local value_type = type(value)
     if value_type == "function" then
       local info = debug.getinfo(value, "S")
@@ -114,13 +119,13 @@ local function get_c_func_lut()
         key_stack[depth] = nil
       end
     end
-  end
+  end)
   walk(_ENV, 1)
   __simhelper_funccapture.c_func_lut_cache = c_func_lut
   return c_func_lut
-end
+end)
 
-local function capture(main_func, custom_restorers)
+local capture = step_ignore(function(main_func, custom_restorers)
   local custom_restore_lut = {}
   for _, custom_restorer in pairs(custom_restorers) do
     local name = custom_restorer.upvalue_name
@@ -141,29 +146,29 @@ local function capture(main_func, custom_restorers)
 
   local add_upval
 
-  local function add_basic(type, value)
+  local add_basic = step_ignore(function(type, value)
     return {
       type = type,
       value = value,
     }
-  end
+  end)
 
   local add_value
   do
     local cases = {
-      ["nil"] = function(value)
+      ["nil"] = step_ignore(function(value)
         return add_basic("nil", value)
-      end,
-      ["number"] = function(value)
+      end),
+      ["number"] = step_ignore(function(value)
         return add_basic("number", value)
-      end,
-      ["string"] = function(value)
+      end),
+      ["string"] = step_ignore(function(value)
         return add_basic("string", value)
-      end,
-      ["boolean"] = function(value)
+      end),
+      ["boolean"] = step_ignore(function(value)
         return add_basic("boolean", value)
-      end,
-      ["table"] = function(value)
+      end),
+      ["table"] = step_ignore(function(value)
         if value == _ENV then
           local result = {
             type = "table",
@@ -186,8 +191,8 @@ local function capture(main_func, custom_restorers)
           }
         end
         return result
-      end,
-      ["function"] = function(value)
+      end),
+      ["function"] = step_ignore(function(value)
         local result = {
           type = "function",
           func = value,
@@ -199,23 +204,23 @@ local function capture(main_func, custom_restorers)
           result.upvals[i] = add_upval(value, i)
         end
         return result
-      end,
-      ["thread"] = function()
+      end),
+      ["thread"] = step_ignore(function()
         error("How did you even get a 'thread' object?")
-      end,
-      ["userdata"] = function()
+      end),
+      ["userdata"] = step_ignore(function()
         error("Cannot have a 'userdata' upvalue for a simulation function.")
-      end,
+      end),
     }
-    function add_value(value)
+    add_value = step_ignore(function(value)
       if ref_values[value] then
         return ref_values[value]
       end
       return cases[type(value)](value)
-    end
+    end)
   end
 
-  function add_upval(func, upval_index)
+  add_upval = step_ignore(function(func, upval_index)
     local id = debug.upvalueid(func, upval_index)
     if upvals[id] then
       return upvals[id]
@@ -230,15 +235,15 @@ local function capture(main_func, custom_restorers)
     }
     upvals[id] = upval
     return upval
-  end
+  end)
 
   local main_value = add_value(main_func)
 
   -- util functions for generating
 
-  local function is_reference_type(value)
+  local is_reference_type = step_ignore(function(value)
     return value.type == "table" or value.type == "function"
-  end
+  end)
 
   local unfinished_tables = {}
   local unfinished_tables_count = 0
@@ -252,19 +257,19 @@ local function capture(main_func, custom_restorers)
   local generate_value
   do
     local cases = {
-      ["nil"] = function(value, use_reference_ids)
+      ["nil"] = step_ignore(function(value, use_reference_ids)
         rc=rc+1;result[rc] = "nil"
-      end,
-      ["number"] = function(value, use_reference_ids)
+      end),
+      ["number"] = step_ignore(function(value, use_reference_ids)
         rc=rc+1;result[rc] = tostring(value.value)
-      end,
-      ["string"] = function(value, use_reference_ids)
+      end),
+      ["string"] = step_ignore(function(value, use_reference_ids)
         rc=rc+1;result[rc] = string.format("%q", value.value)
-      end,
-      ["boolean"] = function(value, use_reference_ids)
+      end),
+      ["boolean"] = step_ignore(function(value, use_reference_ids)
         rc=rc+1;result[rc] = tostring(value.value)
-      end,
-      ["table"] = function(value, use_reference_ids)
+      end),
+      ["table"] = step_ignore(function(value, use_reference_ids)
         if use_reference_ids then
           rc=rc+1;result[rc] = value.ref_id
           return
@@ -307,8 +312,8 @@ local function capture(main_func, custom_restorers)
             rc=rc+1;result[rc] = "}"
           end
         end
-      end,
-      ["function"] = function(value, use_reference_ids)
+      end),
+      ["function"] = step_ignore(function(value, use_reference_ids)
         if use_reference_ids then
           rc=rc+1;result[rc] = value.ref_id
           return
@@ -326,14 +331,14 @@ local function capture(main_func, custom_restorers)
         else
           rc=rc+1;result[rc] = string.format("assert(load(%q,nil,'b'))", string.dump(value.func))
         end
-      end,
-      ["custom"] = function(value, use_reference_ids)
+      end),
+      ["custom"] = step_ignore(function(value, use_reference_ids)
         rc=rc+1;result[rc] = value.custom_expr
-      end,
+      end),
     }
-    function generate_value(value, use_reference_ids)
+    generate_value = step_ignore(function(value, use_reference_ids)
       cases[value.type](value, use_reference_ids)
-    end
+    end)
   end
 
   -- generate reference values
@@ -395,7 +400,7 @@ local function capture(main_func, custom_restorers)
 
   local result_string = table.concat(result)
   return result_string
-end
+end)
 
 return {
   capture = capture,
