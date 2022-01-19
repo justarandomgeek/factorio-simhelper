@@ -1,5 +1,5 @@
 
-The function capture helper allows you to capture a regular Lua function and use it for the `init` and `update` functions for simulations. It also captures upvalues used by this function allowing you to use functions and values from outside the `init` and `update` functions. In other words, you can use libraries and reuse your functions for multiple simulations.
+The `funccapture` helper allows you to capture a regular Lua function and use it for the `init` and `update` functions for simulations. It also captures upvalues used by this function allowing you to use functions and values from outside the `init` and `update` functions. In other words, you can use libraries and reuse your functions for multiple simulations.
 
 ```lua
 local func_capture = require("__simhelper__.funccapture")
@@ -144,3 +144,13 @@ And by "huge" I mean like several thousands of key value pairs, including nested
 Make sure to ignore it immediately after adding it to `_ENV`. It technicaly doesn't have to be immediate, it's just easier that way to avoid any `capture()` calls in between adding it to `_ENV` and ignoring it, since this search happens as part of `capture()` if there are any C function upvalues, (and the mapping is cached, so it only happens once).
 
 For completeness sake there is also `un_ignore_table_in_env(tab)` which will undo the registration of `tab` but even if you don't deregister it, it won't keep the table alive forever because it's stored in a weak table.
+
+### Control stage and storing in `global`
+
+Simply put, if you try to use `funccapture` to store functions in `global` you will find out why it is disallowed by the base game to store functions. **So don't do it**.
+
+A few more details to make sure you understand: When restoring a captured function it restores everything that was captured as a copy of what it captured (except for C function, those are restored as a reference to somewhere in `_ENV`), which means any reference to your file level locals, libraries, functions, just anything that was captured will be duplicated, no longer referring to the same thing as the rest of your code base. If you've ever accidently required the same file using different strings you'll know what kind of weird issues you can get by doing that.
+
+Aside from that, if you wanted to update anything that is used by your captured function you'd have to _somehow_ figure out which captured functions have a captured copy of it (through a chain of upvalues), and then _somehow_ update that to be the new thing. I don't even know how you'd do that.
+
+So yea, safe yourself some sanity and just don't.
