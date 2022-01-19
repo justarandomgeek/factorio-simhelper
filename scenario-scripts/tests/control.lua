@@ -24,6 +24,15 @@ local function assert_equals(expected, got)
   end
 end
 
+local function assert_not_equals(expected, got)
+  if got == expected then
+    assert_result = {
+      msg = "expected and got '"..tostring(got).."' when they should be different",
+    }
+    abort()
+  end
+end
+
 -- tests
 
 local func_capture = require("__simhelper__.funccapture")
@@ -62,8 +71,10 @@ end
 
 local function run_tests(player_data)
   local test_profiler = game.create_profiler(true)
+  local test_count = 0
   local main_profiler = game.create_profiler()
   for name, test in pairs(tests) do
+    test_count = test_count + 1
     test.name = name
     assert_result = nil
     local stacktrace
@@ -84,7 +95,7 @@ local function run_tests(player_data)
       write_result(player_data, test, test_profiler, false, assert_result.msg)
     else
       if test.expected_error then
-        if result == test.expected_error then
+        if result:find(test.expected_error) then
           write_result(player_data, test, test_profiler, true)
         else
           write_result(player_data, test, test_profiler, false, "expected error '"..test.expected_error.."', got '"..result.."'", stacktrace)
@@ -95,7 +106,7 @@ local function run_tests(player_data)
     end
   end
   main_profiler.stop()
-  game.print(main_profiler)
+  log{"", "Ran "..test_count.." tests in ", main_profiler}
 end
 
 script.on_init(function()

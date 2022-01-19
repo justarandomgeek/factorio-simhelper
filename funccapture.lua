@@ -127,15 +127,17 @@ end)
 
 local capture = step_ignore(function(main_func, custom_restorers)
   local custom_restore_lut = {}
-  for _, custom_restorer in pairs(custom_restorers) do
-    local name = custom_restorer.upvalue_name
-    if custom_restore_lut[name] then
-      error("Duplicate custom restorer registered for upvalue_name '"..name.."'")
+  if custom_restorers then
+    for _, custom_restorer in pairs(custom_restorers) do
+      local name = custom_restorer.upvalue_name
+      if custom_restore_lut[name] then
+        error("Duplicate custom restorer registered for upvalue_name '"..name.."'")
+      end
+      custom_restore_lut[name] = {
+        type = "custom",
+        custom_expr = generate_expr(custom_restorer.restore_as_global),
+      }
     end
-    custom_restore_lut[name] = {
-      type = "custom",
-      custom_expr = generate_expr(custom_restorer.restore_as_global),
-    }
   end
 
   ---@type table<userdata, Upvalue>
