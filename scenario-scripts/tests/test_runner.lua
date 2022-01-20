@@ -43,26 +43,35 @@ end
 ---@type table<string, Test>
 local tests = {}
 
-local function write_result(player_data, test, test_profiler, passed, msg, tooltip)
+local function write_to_output(player_data, gui_str, log_str, tooltip)
   player_data.scroll_pane.add{
     type = "label",
     tooltip = tooltip,
     -- have to set caption after the fact because a LuaProfiler cannot be
     -- in a property tree which is what `add` is using.
     -- see https://forums.factorio.com/viewtopic.php?p=560263#p560263
-  }.caption = {
-    "",
-    "[font=default-bold]"..test.name.."[/font] [color="..(passed and "#00FF00" or "#FF0000")
-      .."]"..(passed and "passed" or "failed").."[/color] (",
-    test_profiler,
-    ")"..(msg and (": "..msg) or ""),
-  }
-  log{
-    "",
-    test.name.." "..(passed and "passed" or "failed").." (",
-    test_profiler,
-    ")"..(msg and (": "..msg) or ""),
-  }
+  }.caption = gui_str
+  log(log_str)
+end
+
+local function write_result(player_data, test, test_profiler, passed, msg, tooltip)
+  write_to_output(
+    player_data,
+    {
+      "",
+      "[font=default-bold]"..test.name.."[/font] [color="..(passed and "#00FF00" or "#FF0000")
+        .."]"..(passed and "passed" or "failed").."[/color] (",
+      test_profiler,
+      ")"..(msg and (": "..msg) or ""),
+    },
+    {
+      "",
+      test.name.." "..(passed and "passed" or "failed").." (",
+      test_profiler,
+      ")"..(msg and (": "..msg) or ""),
+    },
+    tooltip
+  )
 end
 
 local function run_tests(player_data)
@@ -102,7 +111,8 @@ local function run_tests(player_data)
     end
   end
   main_profiler.stop()
-  log{"", "Ran "..test_count.." tests in ", main_profiler}
+  local total_str = {"", "Ran "..test_count.." tests in ", main_profiler}
+  write_to_output(player_data, total_str, total_str)
 end
 
 -- gui init
