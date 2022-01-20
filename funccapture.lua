@@ -325,7 +325,7 @@ local capture = step_ignore(function(main_func, custom_restorers)
           local lut = get_c_func_lut()
           local expr = lut[value.func]
           if not expr then
-            error("Unable to capture unknown c function. Did you remove it from \z
+            error("Unable to capture unknown C function. Did you remove it from \z
               _ENV or use and store the result of gmatch or ipairs or similar?"
             )
           end
