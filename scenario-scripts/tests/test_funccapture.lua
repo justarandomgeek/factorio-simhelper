@@ -15,11 +15,23 @@ local function add_test(test)
   tests[test.name] = test
   local run = test.run
   test.run = function()
+    -- universal arrange
+    -- this should actually be teardown, but since the given `run` function can
+    -- error as part of tests, it's by far easier to just do it before calling it
+    local tables_to_ignore = __simhelper_funccapture.tables_to_ignore
+    local k = next(tables_to_ignore)
+    while k do
+      local prev_k = k
+      k = next(tables_to_ignore, k)
+      if prev_k ~= __simhelper_funccapture then
+        tables_to_ignore[prev_k] = nil
+      end
+    end
+    __simhelper_funccapture.c_func_lut_cache = nil
+    __simhelper_funccapture.next_func_id = 0
+    rawset(_ENV, "__funccapture_result0", nil) -- bypass undefined global check
+
     run()
-    -- universal teardown
-    _ENV.__simhelper_funccapture.c_func_lut_cache = nil
-    _ENV.__simhelper_funccapture.next_func_id = 0
-    _ENV.__funccapture_result0 = nil
   end
 end
 
