@@ -46,14 +46,16 @@ local tests = {}
 local function write_result(player_data, test, test_profiler, passed, msg, tooltip)
   player_data.scroll_pane.add{
     type = "label",
-    caption = {
-      "",
-      "[font=default-bold]"..test.name.."[/font] [color="..(passed and "#00FF00" or "#FF0000").."]"..(passed and "passed" or "failed").."[/color] "
-      , ""..
-      -- "(", test_profiler, ")"..
-      (msg and (": "..msg) or ""),
-    },
     tooltip = tooltip,
+    -- have to set caption after the fact because a LuaProfiler cannot be
+    -- in a property tree which is what `add` is using.
+    -- see https://forums.factorio.com/viewtopic.php?p=560263#p560263
+  }.caption = {
+    "",
+    "[font=default-bold]"..test.name.."[/font] [color="..(passed and "#00FF00" or "#FF0000")
+      .."]"..(passed and "passed" or "failed").."[/color] (",
+    test_profiler,
+    ")"..(msg and (": "..msg) or ""),
   }
   log{
     "",
