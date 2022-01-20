@@ -17,6 +17,8 @@ local function add_test(test)
     run()
     -- universal teardown
     _ENV.__simhelper_funccapture.c_func_lut_cache = nil
+    _ENV.__simhelper_funccapture.next_func_id = 0
+    _ENV.__funccapture_result0 = nil
   end
 end
 
@@ -207,5 +209,23 @@ add_test{
     local restored = loaded()
     -- assert
     assert_equals(restored, restored())
+  end,
+}
+
+add_test{
+  name = "result func cache",
+  run = function()
+    -- arrange
+    local foo = {}
+    local function func()
+      return foo
+    end
+    -- act
+    local captured = capture(func)
+    local loaded = assert(load(captured))
+    local restored1 = loaded()
+    local restored2 = loaded()
+    -- assert
+    assert_equals(restored1, restored2)
   end,
 }

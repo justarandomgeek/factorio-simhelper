@@ -64,6 +64,7 @@ if __DebugAdapter then
 end
 __simhelper_funccapture = {
   tables_to_ignore = setmetatable({}, {__mode = "k"}), -- weak keys
+  next_func_id = 0,
   c_func_lut_cache = nil,
 }
 
@@ -343,6 +344,14 @@ local capture = step_ignore(function(main_func, custom_restorers)
     end)
   end
 
+  -- prepare result cache
+  local result_id = "__funccapture_result"..__simhelper_funccapture.next_func_id
+  __simhelper_funccapture.next_func_id = __simhelper_funccapture.next_func_id + 1
+  rc=rc+1;result[rc] = "do\n"
+  rc=rc+1;result[rc] = "  local result = rawget(_ENV,'"..result_id.."')\n"
+  rc=rc+1;result[rc] = "  if result then return result(...) end\n"
+  rc=rc+1;result[rc] = "end\n"
+
   -- generate reference values
 
   rc=rc+1;result[rc] = "local ref_values={}"
@@ -398,6 +407,9 @@ local capture = step_ignore(function(main_func, custom_restorers)
     end
   end
 
+  -- store in result cache and return
+
+  rc=rc+1;result[rc] = "\nrawset(_ENV,'"..result_id.."',"..main_value.ref_id..")"
   rc=rc+1;result[rc] = "\nreturn "..main_value.ref_id.."(...)"
 
   local result_string = table.concat(result)
