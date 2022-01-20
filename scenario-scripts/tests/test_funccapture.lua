@@ -25,10 +25,12 @@ end
 add_test{
   name = "pure function",
   run = function()
-    -- act
-    local captured = capture(function()
+    -- arrange
+    local function func()
       return 100
-    end)
+    end
+    -- act
+    local captured = capture(func)
     local loaded = assert(load(captured))
     local result = loaded()
     -- assert
@@ -49,10 +51,11 @@ do
     run = function()
       -- arrange
       local value = data.value
-      local captured = capture(function()
+      local function func()
         return value
-      end)
+      end
       -- act
+      local captured = capture(func)
       local loaded = assert(load(captured))
       local result = loaded()
       -- assert
@@ -70,10 +73,11 @@ add_test{
       bytes[i + 1] = i
     end
     local value = string.char(table.unpack(bytes))
-    -- act
-    local captured = capture(function()
+    local function func()
       return value
-    end)
+    end
+    -- act
+    local captured = capture(func)
     local loaded = assert(load(captured))
     local result = loaded()
     -- assert
@@ -86,10 +90,11 @@ add_test{
   run = function()
     -- arrange
     local concat = table.concat
-    -- act
-    local captured = capture(function()
+    local function func()
       return concat
-    end)
+    end
+    -- act
+    local captured = capture(func)
     local loaded = assert(load(captured))
     local result = loaded()
     -- assert
@@ -102,10 +107,11 @@ add_test{
   run = function()
     -- arrange
     local gmatch_iter = string.gmatch("", "")
-    -- act
-    capture(function()
+    local function func()
       return gmatch_iter
-    end)
+    end
+    -- act
+    capture(func)
   end,
   expected_error = "Unable to capture unknown C function",
 }
@@ -117,10 +123,11 @@ add_test{
     local value = {1}
     value[value] = 2
     value.foo = 3
-    local captured = capture(function()
+    local function func()
       return value
-    end)
+    end
     -- act
+    local captured = capture(func)
     local loaded = assert(load(captured))
     local result = loaded()
     -- assert
@@ -138,10 +145,11 @@ add_test{
     local function upval()
       return 100
     end
-    local captured = capture(function()
+    local function func()
       return upval()
-    end)
+    end
     -- act
+    local captured = capture(func)
     local loaded = assert(load(captured))
     local result = loaded()
     -- assert
@@ -181,10 +189,11 @@ add_test{
     local function upval2()
       return upval1()
     end
-    -- act
-    local captured = capture(function()
+    local function func()
       return upval1(), upval2()
-    end)
+    end
+    -- act
+    local captured = capture(func)
     local loaded = assert(load(captured))
     local result1, result2 = loaded()
     -- assert
@@ -206,9 +215,10 @@ add_test{
     -- act
     local captured = capture(func)
     local loaded = assert(load(captured))
-    local restored = loaded()
+    local restored1 = loaded()
+    local restored2 = restored1()
     -- assert
-    assert_equals(restored, restored())
+    assert_equals(restored1, restored2)
   end,
 }
 
@@ -223,9 +233,9 @@ add_test{
     -- act
     local captured = capture(func)
     local loaded = assert(load(captured))
-    local restored1 = loaded()
-    local restored2 = loaded()
+    local result1 = loaded()
+    local result2 = loaded()
     -- assert
-    assert_equals(restored1, restored2)
+    assert_equals(result1, result2)
   end,
 }
