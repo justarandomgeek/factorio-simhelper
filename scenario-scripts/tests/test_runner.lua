@@ -33,21 +33,15 @@ local function assert_not_equals(expected, got)
   end
 end
 
--- tests
-
-local func_capture = require("__simhelper__.funccapture")
-local capture = func_capture.capture
-
-local tests = {}
-
--- tests["foo"] = {
---   run = function()
---     error("foo2")
---   end,
---   expected_error = "foo",
--- }
-
 -- test runner
+
+---@class Test
+---@field run fun()
+---A pattern. If provided `run` must error with a message matching the pattern
+---@field expected_error string
+
+---@type table<string, Test>
+local tests = {}
 
 local function write_result(player_data, test, test_profiler, passed, msg, tooltip)
   player_data.scroll_pane.add{
@@ -108,6 +102,8 @@ local function run_tests(player_data)
   main_profiler.stop()
   log{"", "Ran "..test_count.." tests in ", main_profiler}
 end
+
+-- gui init
 
 script.on_init(function()
   global.players = {}
@@ -176,3 +172,10 @@ end)
 script.on_event(defines.events.on_player_display_resolution_changed, function(event)
   on_res_change(global.players[event.player_index])
 end)
+
+return {
+  assert = assert,
+  assert_equals = assert_equals,
+  assert_not_equals = assert_not_equals,
+  tests = tests,
+}
