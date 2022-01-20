@@ -1,4 +1,8 @@
 
+---cSpell:ignore simhelper, bytecode, autosave, visualisation, quickbar
+
+local deep_compare = require("__simhelper__.scenario-scripts.tests.deep_compare")
+
 -- assert functions
 
 local assert_result
@@ -28,6 +32,28 @@ local function assert_not_equals(expected, got)
   if got == expected then
     assert_result = {
       msg = "expected and got '"..tostring(got).."' when they should be different",
+    }
+    abort()
+  end
+end
+
+local function assert_contents_equals(expected, got)
+  local equal, difference = deep_compare.deep_compare(expected, got)
+  if not equal then
+    local msg
+    if difference.type == deep_compare.difference_type.value_type then
+      msg = "expected type '"..type(difference.left).."', got '"
+        ..type(difference.right).."' at "..difference.location
+    elseif difference.type == deep_compare.difference_type.function_bytecode then
+      msg = "function bytecode differs at "..difference.location
+    elseif difference.type == deep_compare.difference_type.primitive_value then
+      msg = "expected '"..tostring(difference.left).."', got '"
+        ..tostring(difference.right).."' at "..difference.location
+    elseif difference.type == deep_compare.difference_type.size then
+      msg = "table size differs at "..difference.location
+    end
+    assert_result = {
+      msg = msg,
     }
     abort()
   end
@@ -190,4 +216,5 @@ return {
   assert_equals = assert_equals,
   assert_not_equals = assert_not_equals,
   tests = tests,
+  assert_contents_equals = assert_contents_equals,
 }

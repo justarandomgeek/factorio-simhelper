@@ -6,6 +6,7 @@ local tests = runner.tests
 local assert = runner.assert
 local assert_equals = runner.assert_equals
 local assert_not_equals = runner.assert_not_equals
+local assert_contents_equals = runner.assert_contents_equals
 
 local func_capture = require("__simhelper__.funccapture")
 local capture = func_capture.capture
@@ -132,9 +133,7 @@ add_test{
     local result = loaded()
     -- assert
     assert_not_equals(value, result)
-    -- TODO: write custom table comparison, [...]
-    -- serpent actually doesn't preserve iteration order in this case, so it's not a good test
-    assert_equals(serpent.dump(value), serpent.dump(result))
+    assert_contents_equals(value, result)
   end,
 }
 
