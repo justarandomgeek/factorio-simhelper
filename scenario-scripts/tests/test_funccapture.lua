@@ -23,11 +23,13 @@ end
 add_test{
   name = "pure function",
   run = function()
+    -- act
     local captured = capture(function()
       return 100
     end)
     local loaded = assert(load(captured))
     local result = loaded()
+    -- assert
     assert_equals(100, result)
   end,
 }
@@ -43,12 +45,15 @@ do
   add_test{
     name = "primitive "..(data.label or data.type).." upval",
     run = function()
+      -- arrange
       local value = data.value
       local captured = capture(function()
         return value
       end)
+      -- act
       local loaded = assert(load(captured))
       local result = loaded()
+      -- assert
       assert_equals(value, result)
     end,
   }
@@ -57,16 +62,19 @@ end
 add_test{
   name = "special string upval",
   run = function()
+    -- arrange
     local bytes = {}
     for i = 0, 255 do
       bytes[i + 1] = i
     end
     local value = string.char(table.unpack(bytes))
+    -- act
     local captured = capture(function()
       return value
     end)
     local loaded = assert(load(captured))
     local result = loaded()
+    -- assert
     assert_equals(value, result)
   end,
 }
@@ -74,12 +82,15 @@ add_test{
 add_test{
   name = "c function upval",
   run = function()
+    -- arrange
     local concat = table.concat
+    -- act
     local captured = capture(function()
       return concat
     end)
     local loaded = assert(load(captured))
     local result = loaded()
+    -- assert
     assert_equals(table.concat, result)
   end,
 }
@@ -87,7 +98,9 @@ add_test{
 add_test{
   name = "invalid c function upval",
   run = function()
+    -- arrange
     local gmatch_iter = string.gmatch("", "")
+    -- act
     capture(function()
       return gmatch_iter
     end)
@@ -98,14 +111,17 @@ add_test{
 add_test{
   name = "preserve iteration order with back refs",
   run = function()
+    -- arrange
     local value = {1}
     value[value] = 2
     value.foo = 3
     local captured = capture(function()
       return value
     end)
+    -- act
     local loaded = assert(load(captured))
     local result = loaded()
+    -- assert
     assert_not_equals(value, result)
     -- TODO: write custom table comparison, [...]
     -- serpent actually doesn't preserve iteration order in this case, so it's not a good test
@@ -116,14 +132,17 @@ add_test{
 add_test{
   name = "upval in function upval",
   run = function()
+    -- arrange
     local function upval()
       return 100
     end
     local captured = capture(function()
       return upval()
     end)
+    -- act
     local loaded = assert(load(captured))
     local result = loaded()
+    -- assert
     assert_equals(100, result)
   end,
 }
@@ -131,6 +150,7 @@ add_test{
 add_test{
   name = "upval in function upval loop",
   run = function()
+    -- arrange
     local func
     local function upval()
       local _ = func
@@ -139,9 +159,11 @@ add_test{
     function func()
       return upval()
     end
+    -- act
     local captured = capture(func)
     local loaded = assert(load(captured))
     local result = loaded()
+    -- assert
     assert_equals(100, result)
   end,
 }
@@ -149,6 +171,7 @@ add_test{
 add_test{
   name = "upval deduplication",
   run = function()
+    -- arrange
     local value = {}
     local function upval1()
       return value
@@ -156,11 +179,13 @@ add_test{
     local function upval2()
       return upval1()
     end
+    -- act
     local captured = capture(function()
       return upval1(), upval2()
     end)
     local loaded = assert(load(captured))
     local result1, result2 = loaded()
+    -- assert
     assert_equals(result1, result2)
   end,
 }
@@ -168,6 +193,7 @@ add_test{
 add_test{
   name = "upval of itself",
   run = function()
+    -- arrange
     local func
     local function upval()
       return func
@@ -175,9 +201,11 @@ add_test{
     function func()
       return upval()
     end
+    -- act
     local captured = capture(func)
     local loaded = assert(load(captured))
     local restored = loaded()
+    -- assert
     assert_equals(restored, restored())
   end,
 }
