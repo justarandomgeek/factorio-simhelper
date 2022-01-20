@@ -130,6 +130,40 @@ add_test{
 }
 
 add_test{
+  name = "ignore table in env for c func lut",
+  run = function()
+    -- arrange
+    local concat = table.concat
+    local function func()
+      return concat
+    end
+    func_capture.ignore_table_in_env(table)
+    -- act
+    capture(func)
+  end,
+  expected_error = "Unable to capture unknown C function",
+}
+
+add_test{
+  name = "un-ignore table in env for c func lut",
+  run = function()
+    -- arrange
+    local concat = table.concat
+    local function func()
+      return concat
+    end
+    func_capture.ignore_table_in_env(table)
+    func_capture.un_ignore_table_in_env(table)
+    -- act
+    local captured = capture(func)
+    local loaded = assert(load(captured))
+    local result = loaded()
+    -- assert
+    assert_equals(table.concat, result)
+  end,
+}
+
+add_test{
   name = "preserve iteration order with back refs",
   run = function()
     -- arrange
