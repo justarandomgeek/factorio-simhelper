@@ -1,4 +1,6 @@
 
+---cSpell:ignore simhelper, funccapture, upval, deduplication
+
 local runner = require("__simhelper__.scenario-scripts.tests.test_runner")
 local tests = runner.tests
 local assert = runner.assert
@@ -8,7 +10,18 @@ local assert_not_equals = runner.assert_not_equals
 local func_capture = require("__simhelper__.funccapture")
 local capture = func_capture.capture
 
-tests["pure function"] = {
+local function add_test(test)
+  tests[test.name] = test
+  local run = test.run
+  test.run = function()
+    run()
+    -- universal teardown
+    _ENV.__simhelper_funccapture.c_func_lut_cache = nil
+  end
+end
+
+add_test{
+  name = "pure function",
   run = function()
     local captured = capture(function()
       return 100
@@ -27,7 +40,8 @@ for _, data in pairs{
   {label = "false", type = "boolean", value = false},
 }
 do
-  tests["primitive "..(data.label or data.type).." upval"] = {
+  add_test{
+    name = "primitive "..(data.label or data.type).." upval",
     run = function()
       local value = data.value
       local captured = capture(function()
@@ -40,7 +54,8 @@ do
   }
 end
 
-tests["special string upval"] = {
+add_test{
+  name = "special string upval",
   run = function()
     local bytes = {}
     for i = 0, 255 do
@@ -56,7 +71,8 @@ tests["special string upval"] = {
   end,
 }
 
-tests["c function upval"] = {
+add_test{
+  name = "c function upval",
   run = function()
     local concat = table.concat
     local captured = capture(function()
@@ -68,7 +84,8 @@ tests["c function upval"] = {
   end,
 }
 
-tests["invalid c function upval"] = {
+add_test{
+  name = "invalid c function upval",
   run = function()
     local gmatch_iter = string.gmatch("", "")
     capture(function()
@@ -78,7 +95,8 @@ tests["invalid c function upval"] = {
   expected_error = "Unable to capture unknown C function",
 }
 
-tests["preserve iteration order with back refs"] = {
+add_test{
+  name = "preserve iteration order with back refs",
   run = function()
     local value = {1}
     value[value] = 2
@@ -91,12 +109,12 @@ tests["preserve iteration order with back refs"] = {
     assert_not_equals(value, result)
     -- TODO: write custom table comparison, [...]
     -- serpent actually doesn't preserve iteration order in this case, so it's not a good test
-    local options = {name = "_"}
-    assert_equals(serpent.line(value, options), serpent.line(result, options))
+    assert_equals(serpent.dump(value), serpent.dump(result))
   end,
 }
 
-tests["upval in function upval"] = {
+add_test{
+  name = "upval in function upval",
   run = function()
     local function upval()
       return 100
@@ -110,7 +128,8 @@ tests["upval in function upval"] = {
   end,
 }
 
-tests["upval in function upval loop"] = {
+add_test{
+  name = "upval in function upval loop",
   run = function()
     local func
     local function upval()
@@ -127,7 +146,8 @@ tests["upval in function upval loop"] = {
   end,
 }
 
-tests["upval deduplication"] = {
+add_test{
+  name = "upval deduplication",
   run = function()
     local value = {}
     local function upval1()
@@ -145,7 +165,8 @@ tests["upval deduplication"] = {
   end,
 }
 
-tests["upval of itself"] = {
+add_test{
+  name = "upval of itself",
   run = function()
     local func
     local function upval()
