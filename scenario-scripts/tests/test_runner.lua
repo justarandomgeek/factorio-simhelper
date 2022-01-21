@@ -1,5 +1,5 @@
 
----cSpell:ignore simhelper, bytecode, autosave, visualisation, quickbar
+---cSpell:ignore simhelper, bytecode, autosave, visualisation, quickbar, subfooter
 
 local deep_compare = require("__simhelper__.scenario-scripts.tests.deep_compare")
 
@@ -103,6 +103,7 @@ end
 local function run_tests(player_data)
   local test_profiler = game.create_profiler(true)
   local test_count = 0
+  local success_count = 0
   local main_profiler = game.create_profiler()
   for name, test in pairs(tests) do
     test_count = test_count + 1
@@ -121,6 +122,7 @@ local function run_tests(player_data)
         write_result(player_data, test, test_profiler, false, "expected error '"..test.expected_error.."'")
       else
         write_result(player_data, test, test_profiler, true)
+        success_count = success_count + 1
       end
     elseif assert_result then
       write_result(player_data, test, test_profiler, false, assert_result.msg)
@@ -128,6 +130,7 @@ local function run_tests(player_data)
       if test.expected_error then
         if result:find(test.expected_error) then
           write_result(player_data, test, test_profiler, true)
+          success_count = success_count + 1
         else
           write_result(player_data, test, test_profiler, false, "expected error '"..test.expected_error.."', got '"..result.."'", stacktrace)
         end
@@ -137,8 +140,19 @@ local function run_tests(player_data)
     end
   end
   main_profiler.stop()
-  local total_str = {"", "Ran "..test_count.." tests in ", main_profiler}
-  write_to_output(player_data, total_str, total_str)
+
+  player_data.subfooter_label.caption = {
+    "",
+    "Ran "..test_count.." tests in ",
+    main_profiler,
+    success_count ~= test_count and (", [color=#ff0000]"..(test_count - success_count).." failed[/color]") or ""
+  }
+  log{
+    "",
+    "Ran "..test_count.." tests in ",
+    main_profiler,
+    success_count ~= test_count and (", "..(test_count - success_count).." failed") or ""
+  }
 end
 
 -- gui init
@@ -148,13 +162,9 @@ script.on_init(function()
 end)
 
 local function on_res_change(player_data)
-  ---@type table
   local style = player_data.frame.style
-  ---@type table
   local res = player_data.player.display_resolution
-  ---@type number
   style.width = res.width
-  ---@type number
   style.height = res.height
 end
 
@@ -164,9 +174,7 @@ script.on_event(defines.events.on_player_created, function(event)
   -- no need for this to autosave
   game.autosave_enabled = false
 
-  ---@type table
   local player = game.get_player(event.player_index)
-  ---@type table
   local gvs = player.game_view_settings
   gvs.show_controller_gui = false
   gvs.show_minimap = false
@@ -180,25 +188,52 @@ script.on_event(defines.events.on_player_created, function(event)
   gvs.show_quickbar = false
   gvs.show_shortcut_bar = false
 
-  ---@type table
   local frame = player.gui.screen.add{
     type = "frame",
     caption = "Tests",
+    direction = "horizontal",
+  }
+
+  local inside_shallow_frame = frame.add{
+    type = "frame",
+    style = "inside_shallow_frame",
     direction = "vertical",
   }
 
-  ---@type table
-  local scroll_pane = frame.add{
+  local scroll_pane = inside_shallow_frame.add{
     type = "scroll-pane",
-    direction = "horizontal",
+    style = "scroll_pane_in_shallow_frame",
+
+    -- as you'd guess, this is for being under a sub header,
+    -- but for some reason there is hardly any shadow at the bottom
+    -- and no shadow on the right next to the scroll bar
+    -- could be that this doesn't have shadows
+    -- (so it's just got shadows from the parent frame),
+    -- while scroll_pane_in_shallow_frame has overlapping shadows
+    -- with the parent frame. Maybe
+    -- style = "scroll_pane_under_subheader",
   }
   scroll_pane.style.horizontally_stretchable = true
   scroll_pane.style.vertically_stretchable = true
+  scroll_pane.style.padding = 4
+  scroll_pane.style.extra_padding_when_activated = 0
+
+  local subfooter_frame = inside_shallow_frame.add{
+    type = "frame",
+    style = "subfooter_frame",
+  }
+  subfooter_frame.style.horizontally_stretchable = true
+
+  local subfooter_label = subfooter_frame.add{
+    type = "label",
+    style = "subheader_caption_label",
+  }
 
   local player_data = {
     player = player,
-    scroll_pane = scroll_pane,
     frame = frame,
+    scroll_pane = scroll_pane,
+    subfooter_label = subfooter_label,
   }
   global.players[event.player_index] = player_data
 
@@ -212,9 +247,9 @@ script.on_event(defines.events.on_player_display_resolution_changed, function(ev
 end)
 
 return {
+  tests = tests,
   assert = assert,
   assert_equals = assert_equals,
   assert_not_equals = assert_not_equals,
-  tests = tests,
   assert_contents_equals = assert_contents_equals,
 }
