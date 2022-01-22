@@ -1,7 +1,9 @@
 ---------------------------------------------------------------------------------------------------
 Version: 1.1.2
 Date: ????
-  Changes:
+  Major Features:
+    - Add `funccapture` to capture Lua functions for the init and update functions of simulations
+      including the upvalues of the given functions allowing for easy reuse of code
 ---------------------------------------------------------------------------------------------------
 Version: 1.1.1
 Date: 2021-01-30
