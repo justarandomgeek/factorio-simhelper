@@ -1,5 +1,5 @@
 
----cSpell:ignore userdata, upval, upvals, nups, bytecode
+---cSpell:ignore userdata, upval, upvals, nups, bytecode, metatable
 
 -- deep compare compares the contents of 2 values
 
@@ -113,6 +113,19 @@ do
       create_difference(difference_type.size, left, right)
       return false
     end
+
+    local left_meta = debug.getmetatable(left)
+    local right_meta = debug.getmetatable(right)
+    if left_meta ~= nil or right_meta ~= nil then
+      assert(type(left_meta) == "table", "Unexpected metatable type '"..type(left_meta).."'")
+      assert(type(right_meta) == "table", "Unexpected metatable type '"..type(right_meta).."'")
+      location_stack_size = location_stack_size + 1
+      location_stack[location_stack_size] = "[metatable]"
+      local result = compare_values(left_meta, right_meta)
+      location_stack_size = location_stack_size - 1
+      return result
+    end
+
     return true
   end
 
