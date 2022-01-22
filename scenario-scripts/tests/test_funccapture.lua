@@ -28,6 +28,17 @@ local function add_test(test)
         tables_to_ignore[prev_k] = nil
       end
     end
+
+    local number_cache = __simhelper_funccapture.number_cache
+    k = next(number_cache)
+    while k do
+      local prev_k = k
+      k = next(number_cache, k)
+      if prev_k ~= 1/0 and prev_k ~= -1/0 then
+        number_cache[prev_k] = nil
+      end
+    end
+
     __simhelper_funccapture.c_func_lut_cache = nil
     __simhelper_funccapture.next_func_id = 0
     rawset(_ENV, "__funccapture_result0", nil) -- bypass undefined global check
@@ -54,7 +65,8 @@ add_test{
 
 for _, data in pairs{
   {label = "nil", value = nil},
-  {label = "number", value = 150},
+  {label = "integer", value = 150},
+  {label = "number", value = 1.5}, -- 1.5 in double can't be represented perfectly
   {label = "nan", value = 0/0},
   {label = "inf", value = 1/0},
   {label = "-inf", value = -1/0},
@@ -144,6 +156,26 @@ add_test{
     local result1, result2 = loaded()
     -- assert
     assert_equals(result1, result2)
+  end,
+}
+
+add_test{
+  -- test if 2 of the numbers are captured and restored correctly
+  name = "number cache",
+  run = function()
+    -- arrange
+    local value1 = 1.5
+    local value2 = 1.5
+    local function func()
+      return value1, value2
+    end
+    -- act
+    local captured = capture(func)
+    local loaded = assert(load(captured))
+    local result1, result2 = loaded()
+    -- assert
+    assert_equals(1.5, result1)
+    assert_equals(1.5, result2)
   end,
 }
 

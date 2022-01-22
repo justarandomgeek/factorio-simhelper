@@ -66,6 +66,11 @@ __simhelper_funccapture = {
   tables_to_ignore = setmetatable({}, {__mode = "k"}), -- weak keys
   next_func_id = 0,
   c_func_lut_cache = nil,
+  number_cache = {
+    -- preload inf and -inf because they print %a as "inf" and "-inf"
+    [1/0] = "1/0",
+    [-1/0] = "-1/0",
+  },
 }
 
 local ensure_is_table = step_ignore(function(tab)
@@ -259,12 +264,23 @@ local capture = step_ignore(function(main_func, custom_restorers)
   local rc = 0
   local generate_value
   do
+    local number_cache = __simhelper_funccapture.number_cache
     local cases = {
       ["nil"] = step_ignore(function(value, use_reference_ids)
         rc=rc+1;result[rc] = "nil"
       end),
       ["number"] = step_ignore(function(value, use_reference_ids)
-        rc=rc+1;result[rc] = tostring(value.value)
+        local number_str = number_cache[value.value]
+        if not number_str then
+          if value.value ~= value.value then -- nan
+            number_str = "0/0"
+          else
+            -- %a prints a double as hexadecimal, or so
+            number_str = string.format("%a", value.value)
+            number_cache[value.value] = number_str
+          end
+        end
+        rc=rc+1;result[rc] = number_str
       end),
       ["string"] = step_ignore(function(value, use_reference_ids)
         rc=rc+1;result[rc] = string.format("%q", value.value)
