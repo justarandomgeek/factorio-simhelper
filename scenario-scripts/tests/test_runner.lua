@@ -28,6 +28,15 @@ local function assert_equals(expected, got)
   end
 end
 
+local function assert_nan(got)
+  if got == got then
+    assert_result = {
+      msg = "expected 'nan', got '"..tostring(got).."'",
+    }
+    abort()
+  end
+end
+
 local function assert_not_equals(expected, got)
   if got == expected then
     assert_result = {
@@ -270,6 +279,7 @@ return {
   tests = tests,
   assert = assert,
   assert_equals = assert_equals,
+  assert_nan = assert_nan,
   assert_not_equals = assert_not_equals,
   assert_contents_equals = assert_contents_equals,
 }

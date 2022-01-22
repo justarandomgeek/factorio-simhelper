@@ -1,10 +1,11 @@
 
----cSpell:ignore simhelper, funccapture, upval, deduplication
+---cSpell:ignore simhelper, funccapture, upval, deduplication, metatable
 
 local runner = require("__simhelper__.scenario-scripts.tests.test_runner")
 local tests = runner.tests
 local assert = runner.assert
 local assert_equals = runner.assert_equals
+local assert_nan = runner.assert_nan
 local assert_not_equals = runner.assert_not_equals
 local assert_contents_equals = runner.assert_contents_equals
 
@@ -52,15 +53,26 @@ add_test{
 }
 
 for _, data in pairs{
-  {type = "nil", value = nil},
-  {type = "number", value = 150},
-  {type = "string", value = "hello world"},
-  {label = "true", type = "boolean", value = true},
-  {label = "false", type = "boolean", value = false},
+  {label = "nil", value = nil},
+  {label = "number", value = 150},
+  {label = "nan", value = 0/0},
+  {label = "inf", value = 1/0},
+  {label = "-inf", value = -1/0},
+  {label = "string", value = "hello world"},
+  {label = "special string", value = (function()
+    local bytes = {}
+    for i = 0, 255 do
+      bytes[i + 1] = i
+    end
+    return string.char(table.unpack(bytes))
+  end)()},
+  {label = "true", value = true},
+  {label = "false", value = false},
+  {label = "_ENV", value = _ENV},
 }
 do
   add_test{
-    name = "primitive "..(data.label or data.type).." upval",
+    name = data.label.." upval",
     run = function()
       -- arrange
       local value = data.value
@@ -72,31 +84,14 @@ do
       local loaded = assert(load(captured))
       local result = loaded()
       -- assert
-      assert_equals(value, result)
+      if data.value ~= data.value then
+        assert_nan(result)
+      else
+        assert_equals(value, result)
+      end
     end,
   }
 end
-
-add_test{
-  name = "special string upval",
-  run = function()
-    -- arrange
-    local bytes = {}
-    for i = 0, 255 do
-      bytes[i + 1] = i
-    end
-    local value = string.char(table.unpack(bytes))
-    local function func()
-      return value
-    end
-    -- act
-    local captured = capture(func)
-    local loaded = assert(load(captured))
-    local result = loaded()
-    -- assert
-    assert_equals(value, result)
-  end,
-}
 
 add_test{
   name = "c function upval",
@@ -130,7 +125,30 @@ add_test{
 }
 
 add_test{
-  name = "ignore table in env for c func lut",
+  name = "upval deduplication",
+  run = function()
+    -- arrange
+    local value = {}
+    local function upval1()
+      return value
+    end
+    local function upval2()
+      return upval1()
+    end
+    local function func()
+      return upval1(), upval2()
+    end
+    -- act
+    local captured = capture(func)
+    local loaded = assert(load(captured))
+    local result1, result2 = loaded()
+    -- assert
+    assert_equals(result1, result2)
+  end,
+}
+
+add_test{
+  name = "ignore table in _ENV for C func lut",
   run = function()
     -- arrange
     local concat = table.concat
@@ -145,7 +163,7 @@ add_test{
 }
 
 add_test{
-  name = "un-ignore table in env for c func lut",
+  name = "un-ignore table in _ENV for C func lut",
   run = function()
     -- arrange
     local concat = table.concat
@@ -164,12 +182,31 @@ add_test{
 }
 
 add_test{
-  name = "preserve iteration order with back refs",
+  name = "back reference",
   run = function()
     -- arrange
-    local value = {1}
-    value[value] = 2
-    value.foo = 3
+    local value = {}
+    local lib = {value = value}
+    local function func()
+      return lib, value -- lib first
+    end
+    -- act
+    local captured = capture(func)
+    local loaded = assert(load(captured))
+    local lib_result, value_result = loaded()
+    -- assert
+    assert(lib_result.value, "Missing back reference.")
+    assert_equals(lib_result.value, value_result)
+  end,
+}
+
+add_test{
+  name = "cyclic back reference",
+  run = function()
+    -- arrange
+    local value = {}
+    local lib = {value = value}
+    value.lib = lib
     local function func()
       return value
     end
@@ -178,10 +215,69 @@ add_test{
     local loaded = assert(load(captured))
     local result = loaded()
     -- assert
-    assert_not_equals(value, result)
-    assert_contents_equals(value, result)
+    assert(result.lib, "Missing lib back reference.")
+    assert(result.lib.value, "Missing lib.value back reference.")
+    assert_equals(result, result.lib.value)
   end,
 }
+
+add_test{
+  name = "back reference as key",
+  run = function()
+    -- arrange
+    local value = {}
+    local lib = {[value] = true}
+    local function func()
+      return lib, value -- lib first
+    end
+    -- act
+    local captured = capture(func)
+    local loaded = assert(load(captured))
+    local lib_result, value_result = loaded()
+    -- assert
+    assert(next(lib_result), "Missing back reference.")
+    assert_equals(next(lib_result), value_result)
+  end,
+}
+
+for _, data in pairs{
+  {
+    label = "preserve iteration order with back ref",
+    value = (function()
+      local value = {one = 1}
+      value.me = value
+      value.foo = 3
+      return value
+    end)(),
+  },
+  {
+    label = "preserve iteration order with back ref as key",
+    value = (function()
+      local value = {one = 1}
+      value[value] = true
+      value.foo = 3
+      return value
+    end)(),
+  },
+}
+do
+  add_test{
+    name = data.label,
+    run = function()
+      -- arrange
+      local value = data.value
+      local function func()
+        return value
+      end
+      -- act
+      local captured = capture(func)
+      local loaded = assert(load(captured))
+      local result = loaded()
+      -- assert
+      assert_contents_equals(value, result)
+    end,
+  }
+end
 
 add_test{
   name = "upval in function upval",
@@ -224,25 +320,23 @@ add_test{
 }
 
 add_test{
-  name = "upval deduplication",
+  name = "preserve upval id",
   run = function()
     -- arrange
-    local value = {}
-    local function upval1()
-      return value
-    end
-    local function upval2()
-      return upval1()
+    local value = 1
+    local function increment()
+      value = value + 1
     end
     local function func()
-      return upval1(), upval2()
+      increment()
+      return value
     end
     -- act
     local captured = capture(func)
     local loaded = assert(load(captured))
-    local result1, result2 = loaded()
+    local result = loaded()
     -- assert
-    assert_equals(result1, result2)
+    assert_equals(2, result)
   end,
 }
 
@@ -268,7 +362,7 @@ add_test{
 }
 
 add_test{
-  name = "result func cache",
+  name = "result func cache with 1 function",
   run = function()
     -- arrange
     local foo = {}
@@ -282,5 +376,49 @@ add_test{
     local result2 = loaded()
     -- assert
     assert_equals(result1, result2)
+  end,
+}
+
+add_test{
+  name = "result func cache with 2 functions",
+  run = function()
+    -- arrange
+    local value = {}
+    local function foo()
+      return value
+    end
+    local function bar()
+      return value
+    end
+    -- act
+    local foo_captured = capture(foo)
+    local bar_captured = capture(bar)
+    local foo_loaded = assert(load(foo_captured))
+    local bar_loaded = assert(load(bar_captured))
+    local foo_result1 = foo_loaded()
+    local foo_result2 = foo_loaded()
+    local bar_result1 = bar_loaded()
+    local bar_result2 = bar_loaded()
+    -- assert
+    assert_equals(foo_result1, foo_result2)
+    assert_equals(bar_result1, bar_result2)
+    assert_not_equals(foo_result1, bar_result1)
+  end,
+}
+
+add_test{
+  name = "table with metatable upval",
+  run = function()
+    -- arrange
+    local value = setmetatable({}, {})
+    local function func()
+      return value
+    end
+    -- act
+    local captured = capture(func)
+    local loaded = assert(load(captured))
+    local result = loaded()
+    -- assert
+    assert(getmetatable(result), "Missing metatable.")
   end,
 }
