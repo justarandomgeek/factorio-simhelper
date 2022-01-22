@@ -117,6 +117,7 @@ local function run_tests(player_data)
       return msg:match("%.lua:%d+: (.*)")
     end)
     test_profiler.stop()
+    player_data.cumulative_profiler.add(test_profiler)
     if success then
       if test.expected_error then
         write_result(player_data, test, test_profiler, false, "expected error '"..test.expected_error.."'")
@@ -145,13 +146,18 @@ local function run_tests(player_data)
     "",
     "Ran "..test_count.." tests in ",
     main_profiler,
-    success_count ~= test_count and (", [color=#ff0000]"..(test_count - success_count).." failed[/color]") or ""
+    " (total test ",
+    player_data.cumulative_profiler,
+    ")"..(success_count ~= test_count and (", [color=#ff0000]"..(test_count - success_count).." failed[/color]") or "")
   }
+  player_data.subfooter_label.tooltip = "First time is the total time passed.\nSecond time is each test time added together."
   log{
     "",
     "Ran "..test_count.." tests in ",
     main_profiler,
-    success_count ~= test_count and (", "..(test_count - success_count).." failed") or ""
+    " (total test ",
+    player_data.cumulative_profiler,
+    ")"..(success_count ~= test_count and (", "..(test_count - success_count).." failed") or "")
   }
 end
 
@@ -234,6 +240,7 @@ script.on_event(defines.events.on_player_created, function(event)
     frame = frame,
     scroll_pane = scroll_pane,
     subfooter_label = subfooter_label,
+    cumulative_profiler = game.create_profiler(true),
   }
   global.players[event.player_index] = player_data
 
