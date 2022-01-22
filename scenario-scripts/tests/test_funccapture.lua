@@ -1,5 +1,5 @@
 
----cSpell:ignore simhelper, funccapture, upval, deduplication, metatable
+---cSpell:ignore simhelper, funccapture, upval, deduplication, metatable, metamethod
 
 local runner = require("__simhelper__.scenario-scripts.tests.test_runner")
 local tests = runner.tests
@@ -449,6 +449,25 @@ add_test{
   run = function()
     -- arrange
     local value = setmetatable({}, {})
+    local function func()
+      return value
+    end
+    -- act
+    local captured = capture(func)
+    local loaded = assert(load(captured))
+    local result = loaded()
+    -- assert
+    assert(getmetatable(result), "Missing metatable.")
+  end,
+}
+
+add_test{
+  name = "table with __pairs metamethod upval",
+  run = function()
+    -- arrange
+    local value = setmetatable({}, {__pairs = function()
+      assert(false, "__pairs got called")
+    end})
     local function func()
       return value
     end

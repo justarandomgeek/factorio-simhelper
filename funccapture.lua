@@ -1,5 +1,5 @@
 
----cSpell:ignore upvalue, upval, upvals, userdata, funcs, nups, funccapture, simhelper
+---cSpell:ignore upvalue, upval, upvals, userdata, funcs, nups, funccapture, simhelper, metatable, metatables
 
 ---@class TableField
 ---@field key Value
@@ -19,6 +19,8 @@
 ---@field func function
 ---for functions
 ---@field upvals Upvalue[]
+---for tables
+---@field metatable Value|nil
 ---for tables; nil when `is_env`
 ---@field fields TableField[]|nil
 ---for tables
@@ -151,6 +153,8 @@ local capture = step_ignore(function(main_func, custom_restorers)
   local upval_count = 0
   ---@type table<function|table, Value>
   local ref_values = {}
+  local tables_with_metatables = {}
+  local tables_with_metatables_count = 0
 
   local add_upval
 
@@ -190,8 +194,14 @@ local capture = step_ignore(function(main_func, custom_restorers)
           fields = {},
         }
         ref_values[value] = result
+        local metatable = debug.getmetatable(value)
+        if metatable then
+          result.metatable = add_value(metatable)
+          tables_with_metatables_count = tables_with_metatables_count + 1
+          tables_with_metatables[tables_with_metatables_count] = result
+        end
         local field_count = 0
-        for k, v in pairs(value) do
+        for k, v in next, value do -- no pairs to bypass metatable
           field_count = field_count + 1
           result.fields[field_count] = {
             key = add_value(k),
@@ -406,6 +416,13 @@ local capture = step_ignore(function(main_func, custom_restorers)
     rc=rc+1;result[rc] = "]="
     generate_value(field.value, true)
     rc=rc+1;result[rc] = "\n"
+  end
+
+  -- restore metatables
+
+  rc=rc+1;result[rc] = "\n"
+  for _, value in pairs(tables_with_metatables) do
+    rc=rc+1;result[rc] = "setmetatable("..value.ref_id..","..value.metatable.ref_id..")\n"
   end
 
   -- generate dummy functions for upvalue joining
