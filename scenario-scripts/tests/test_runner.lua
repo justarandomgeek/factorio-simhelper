@@ -114,7 +114,7 @@ local function run_tests(player_data)
     local success, result = xpcall(test.run, function(msg)
       test_profiler.stop()
       stacktrace = debug.traceback(nil, 2)
-      return msg:match("%.lua:%d+: (.*)")
+      return msg
     end)
     test_profiler.stop()
     player_data.cumulative_profiler.add(test_profiler)
@@ -128,15 +128,28 @@ local function run_tests(player_data)
     elseif assert_result then
       write_result(player_data, test, test_profiler, false, assert_result.msg)
     else
+      if result then
+        -- [a%]] 'a' for '.lua', ']' for "loaded string sources"
+        result = result:match("[a%]]:%d+: (.*)") or error(
+          "Unable to extract error message from '"..result
+            .."'. The test runner's pattern probably needs to be changed."
+        )
+      end
       if test.expected_error then
-        if result:find(test.expected_error) then
+        if test.expected_error == true or (result and result:find(test.expected_error)) then
           write_result(player_data, test, test_profiler, true)
           success_count = success_count + 1
         else
-          write_result(player_data, test, test_profiler, false, "expected error '"..test.expected_error.."', got '"..result.."'", stacktrace)
+          write_result(player_data, test, test_profiler, false,
+            "expected error '"..test.expected_error.."', got "..(result and ("'"..result.."'") or "no error message"),
+            stacktrace
+          )
         end
       else
-        write_result(player_data, test, test_profiler, false, "unexpected error '"..result.."'", stacktrace)
+        write_result(player_data, test, test_profiler, false,
+          "unexpected error"..(result and (" '"..result.."'") or ""),
+          stacktrace
+        )
       end
     end
   end
