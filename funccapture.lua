@@ -280,7 +280,12 @@ local capture = step_ignore(function(main_func, custom_restorers)
         if value.is_env then
           rc=rc+1;result[rc] = "_ENV"
         else
-          if not value.ref_id then
+          -- this part is used for 2 things:
+          -- 1) create the table for a ref value
+          -- 2) finish the creation of an already created but unfinished ref value (table ofc)
+          -- if value.ref_id is not present, we are doing the former
+          local create_new_table = not value.ref_id
+          if create_new_table then
             rc=rc+1;result[rc] = "{"
           end
           for i, field in next, value.fields, value.resume_at and value.resume_at ~= 1 and (value.resume_at - 1) or nil do
@@ -290,14 +295,14 @@ local capture = step_ignore(function(main_func, custom_restorers)
               unfinished_tables[unfinished_tables_count] = value
               break
             end
-            if value.ref_id then
+            if not create_new_table then
               rc=rc+1;result[rc] = "\n"..value.ref_id
             end
             rc=rc+1;result[rc] = "["
             generate_value(field.key, true)
             rc=rc+1;result[rc] = "]="
             if is_reference_type(field.value) and not field.value.ref_id then
-              assert(not value.ref_id,
+              assert(create_new_table, -- debug assert
                 "When finishing the generation of a table, all other references should be generated already"
               )
               rc=rc+1;result[rc] = "0," -- back reference
@@ -306,12 +311,12 @@ local capture = step_ignore(function(main_func, custom_restorers)
               back_reference_fields[back_references_count] = field
             else
               generate_value(field.value, true)
-              if not value.ref_id then
+              if create_new_table then
                 rc=rc+1;result[rc] = ","
               end
             end
           end
-          if not value.ref_id then
+          if create_new_table then
             rc=rc+1;result[rc] = "}"
           end
         end
