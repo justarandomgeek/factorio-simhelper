@@ -63,7 +63,7 @@ do
       end
       -- compare upvals
       location_stack_size = location_stack_size + 1
-      for i = i, debug.getinfo(left, "u").nups do
+      for i = 1, debug.getinfo(left, "u").nups do
         local name, left_value = debug.getupvalue(left, i)
         local _, right_value = debug.getupvalue(right, i)
         location_stack[location_stack_size] = "[upval #"..i.." ("..name..")]"
