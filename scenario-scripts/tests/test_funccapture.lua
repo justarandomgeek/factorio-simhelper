@@ -41,7 +41,13 @@ local function add_test(test)
 
     __simhelper_funccapture.c_func_lut_cache = nil
     __simhelper_funccapture.next_func_id = 0
-    rawset(_ENV, "__funccapture_result0", nil) -- bypass undefined global check
+    for i = 0, 1/0 do
+      if _ENV["__funccapture_result"..i] then
+        rawset(_ENV, "__funccapture_result"..i, nil) -- bypass undefined global check
+      else
+        break
+      end
+    end
 
     run()
   end
