@@ -53,6 +53,8 @@ local function assert_contents_equals(expected, got)
     if difference.type == deep_compare.difference_type.value_type then
       msg = "expected type '"..type(difference.left).."', got '"
         ..type(difference.right).."' at "..difference.location
+    elseif difference.type == deep_compare.difference_type.c_function then
+      msg = "functions are either non equal C functions, or only one is a C function at "..difference.location
     elseif difference.type == deep_compare.difference_type.function_bytecode then
       msg = "function bytecode differs at "..difference.location
     elseif difference.type == deep_compare.difference_type.primitive_value then

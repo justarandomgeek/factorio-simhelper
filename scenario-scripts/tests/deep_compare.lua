@@ -11,10 +11,11 @@
 
 local deep_compare
 local difference_type = {
-  value_type = 1,
-  function_bytecode = 2,
-  primitive_value = 3,
-  size = 4,
+  value_type = 1, -- type of left and right are different
+  c_function = 2, -- left or right are a c function while the other is either a non-c function or a different c function
+  function_bytecode = 3, -- left and right are functions with differing bytecode
+  primitive_value = 4, -- left and right are the same type, may only be a string, boolean or number but have different values
+  size = 5, -- left and right are tables of different sizes, but up to the point where one ends they are equal
 }
 do
   local visited
@@ -57,13 +58,21 @@ do
       -- TODO: check if that's even true, but it doesn't really matter right now
       error("Cannot compare userdata")
     elseif left_type == "function" then
+      local left_info = debug.getinfo(left, "Su")
+      local right_info = debug.getinfo(left, "S")
+      if left_info.what == "C" or right_info.what == "C" then
+        -- equality was already compared at the start, they are not equal
+        -- or one isn't a c function
+        create_difference(difference_type.c_function, left, right)
+        return false
+      end
       if string.dump(left) ~= string.dump(right) then
         create_difference(difference_type.function_bytecode, left, right)
         return false
       end
       -- compare upvals
       location_stack_size = location_stack_size + 1
-      for i = 1, debug.getinfo(left, "u").nups do
+      for i = 1, left_info.nups do
         local name, left_value = debug.getupvalue(left, i)
         local _, right_value = debug.getupvalue(right, i)
         location_stack[location_stack_size] = "[upval #"..i.." ("..name..")]"
