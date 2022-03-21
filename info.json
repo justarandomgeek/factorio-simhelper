@@ -7,5 +7,12 @@
   "homepage": "",
   "contact": "justarandomgeek@gmail.com",
   "description": "Helper scripts for making simulations",
-  "dependencies": ["base"]
+  "dependencies": [],
+
+  "package": {
+    "ignore": [
+      "scenarios/tests/**",
+      "scenario-scripts/tests/**"
+    ]
+  }
 }
