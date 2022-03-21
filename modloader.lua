@@ -125,7 +125,8 @@ function modloader.load(modname)
       __debugtype = "modloader.LuaBootstrap",
       __index = script,
     }),
-    require = sandbox_require,
+    -- reduce arg list and tailcall sandbox_require with only the name
+    require = function(name) return sandbox_require(name) end,
     package = setmetatable({loaded = modpackages},{__index = package})
   },{
     __debugline = "<modloader _ENV for "..modname..">",

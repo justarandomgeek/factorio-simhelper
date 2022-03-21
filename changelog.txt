@@ -2,6 +2,7 @@
 Version: 1.1.2
 Date: ????
   Changes:
+    - Force `require` hook to take only one argument
 ---------------------------------------------------------------------------------------------------
 Version: 1.1.1
 Date: 2021-01-30
