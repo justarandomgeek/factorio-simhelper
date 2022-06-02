@@ -72,7 +72,7 @@ local util = require("util") -- put 'util' into a local
     -- have to restore the global 'util' using the 
     -- captured local 'util' as an upvalue in order 
     -- for the library function to have access to 'util'
-    util = util
+    _ENV.util = util
 
     local my_data = {}
     local data_copy = some_lib.some_library_function(my_data)
