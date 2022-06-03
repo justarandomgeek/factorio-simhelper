@@ -61,7 +61,7 @@ local generate_expr = step_ignore(function(keys)
   return table.concat(result)
 end)
 
-if __DebugAdapter then
+if __DebugAdapter and __DebugAdapter.defineGlobal then
   __DebugAdapter.defineGlobal("__simhelper_funccapture")
 end
 __simhelper_funccapture = {
