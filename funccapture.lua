@@ -34,9 +34,16 @@
 ---for custom
 ---@field custom_expr string
 
-local step_ignore = __DebugAdapter
-  and __DebugAdapter.stepIgnore
-  or function(func) return func end
+local step_ignore = __DebugAdapter and __DebugAdapter.stepIgnore
+if step_ignore then
+  local f = function() end
+  if f ~= step_ignore(f) then
+    step_ignore = nil
+  end
+end
+if not step_ignore then
+  step_ignore = function(func) return func end
+end
 
 -- NOTE: tables and functions as keys are currently not supported,
 -- though with some work at least _some_ of them could be supported.

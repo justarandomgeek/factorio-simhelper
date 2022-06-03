@@ -2,6 +2,7 @@
 Version: 1.1.4
 Date: ????
   Changes:
+    - Workaround for stdlib's incorrect usage of __DebugAdapter API (Take 2)
 ---------------------------------------------------------------------------------------------------
 Version: 1.1.3
 Date: 2022-06-03
