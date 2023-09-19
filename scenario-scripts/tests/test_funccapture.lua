@@ -129,6 +129,23 @@ add_test{
 }
 
 add_test{
+  name = "c function with userdata upvals upval",
+  run = function()
+    -- arrange
+    local random = math.random -- math.random has 2 userdata upvals
+    local function func()
+      return random
+    end
+    -- act
+    local captured = capture(func)
+    local loaded = assert(load(captured))
+    local result = loaded()
+    -- assert
+    assert_equals(result, random)
+  end,
+}
+
+add_test{
   name = "invalid c function upval",
   run = function()
     -- arrange

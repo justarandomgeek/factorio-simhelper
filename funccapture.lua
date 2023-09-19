@@ -218,6 +218,21 @@ local capture = step_ignore(function(main_func, custom_restorers)
         return result
       end),
       ["function"] = step_ignore(function(value)
+        local data = debug.getinfo(value, "S")
+        if data.what == "C" then
+          local lut = get_c_func_lut()
+          local expr = lut[value]
+          if not expr then
+            error("Unable to capture unknown C function. Did you remove it from \z
+              _ENV or use and store the result of gmatch or ipairs or similar?"
+            )
+          end
+          return {
+            type = "custom",
+            custom_expr = expr,
+          }
+        end
+        -- non c function
         local result = {
           type = "function",
           func = value,
@@ -359,19 +374,7 @@ local capture = step_ignore(function(main_func, custom_restorers)
           rc=rc+1;result[rc] = value.ref_id
           return
         end
-        local data = debug.getinfo(value.func, "S")
-        if data.what == "C" then
-          local lut = get_c_func_lut()
-          local expr = lut[value.func]
-          if not expr then
-            error("Unable to capture unknown C function. Did you remove it from \z
-              _ENV or use and store the result of gmatch or ipairs or similar?"
-            )
-          end
-          rc=rc+1;result[rc] = expr
-        else
-          rc=rc+1;result[rc] = string.format("assert(load(%q,nil,'b'))", string.dump(value.func))
-        end
+        rc=rc+1;result[rc] = string.format("assert(load(%q,nil,'b'))", string.dump(value.func))
       end),
       ["custom"] = step_ignore(function(value, use_reference_ids)
         rc=rc+1;result[rc] = value.custom_expr
