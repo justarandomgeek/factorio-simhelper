@@ -132,7 +132,7 @@ add_test{
   name = "c function with userdata upvals upval",
   run = function()
     -- arrange
-    local random = math.random -- math.random has 2 userdata upvals
+    local random = math.random -- math.random has 2 userdata upvals, which should be ignored
     local function func()
       return random
     end
@@ -141,7 +141,7 @@ add_test{
     local loaded = assert(load(captured))
     local result = loaded()
     -- assert
-    assert_equals(result, random)
+    assert_equals(math.random, result)
   end,
 }
 
