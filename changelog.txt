@@ -1,7 +1,8 @@
 ---------------------------------------------------------------------------------------------------
 Version: 1.1.5
 Date: ????
-  Changes:
+  Bugfixes:
+    - Fixed function capture error about userdata upvalues for c functions like math.random
 ---------------------------------------------------------------------------------------------------
 Version: 1.1.4
 Date: 2022-06-03
