@@ -53,5 +53,3 @@ Define simulation prototypes using this save with commands as needed to set up y
     }
   },
 ```
-
-Note that the `init` and `update` functions can be defined as regular Lua functions captured using `funccapture`, see [its documentation](funccapture.md).

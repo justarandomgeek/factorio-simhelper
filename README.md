@@ -1,7 +1,7 @@
 
 # Sim Helper
 
-Sim Helper consists of 2 parts to assist with creating simulations.
+Sim Helper contains libraries to assist in creating simulations.
 
 ## Mod Loader
 
@@ -9,8 +9,3 @@ Sim Helper consists of 2 parts to assist with creating simulations.
 
 For a more detailed explanation see [here](modloader.md).
 
-## Function Capture
-
-`funccapture` allows you to capture a regular Lua function and use it for the `init` and `update` functions for simulations. This is useful because `init` and `update` expect strings which are code to be executed in a console command context, disallowing the use of `require` making it hard to reuse code. However with `funccapture`, you can just call functions outside of the captured function and they will be part of the string assigned to `init` and `update`.
-
-For a more detailed explanation see [here](funccapture.md).
